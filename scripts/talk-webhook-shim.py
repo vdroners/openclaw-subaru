@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+"""
+Nextcloud Talk webhook shim — intercept Subaru commands before OpenClaw LLM.
+
+NC bot posts to :8788 (this shim). OpenClaw plugin listens on :8787.
+Also drops inbound messages from the OpenClaw NC user to stop error-reply loops.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+for _lib_dir in (
+    os.path.join(SCRIPT_DIR, "lib"),
+    os.path.expanduser("~/.openclaw/scripts/lib"),
+    os.path.expanduser("~/.openclaw/lib"),
+    os.path.expanduser("~/openclaw-subaru/scripts/lib"),
+):
+    if os.path.isdir(_lib_dir) and _lib_dir not in sys.path:
+        sys.path.insert(0, _lib_dir)
+from subaru_talk_match import (  # noqa: E402
+    extract_room_token,
+    extract_user_message,
+    is_noise_echo,
+    is_overflow_echo,
+    is_subaru_command,
+    is_tool_json_payload,
+    normalize_talk_text,
+)
+
+LISTEN_HOST = os.environ.get("TALK_SHIM_HOST", "0.0.0.0")
+LISTEN_PORT = int(os.environ.get("TALK_SHIM_PORT", "8788"))
+UPSTREAM = os.environ.get(
+    "TALK_SHIM_UPSTREAM", "http://127.0.0.1:8787/nextcloud-talk-webhook"
+).rstrip("/")
+if not UPSTREAM.endswith("/nextcloud-talk-webhook"):
+    UPSTREAM = UPSTREAM.rstrip("/") + "/nextcloud-talk-webhook"
+
+AGENT_MENTION = (os.environ.get("OPENCLAW_AGENT_MENTION", "@openclaw").strip() or "@openclaw")
+AGENT_NAME = (AGENT_MENTION.lstrip("@").lower() or "openclaw")
+FAMILY_HUB_ROOM = os.environ.get("SKYLIGHT_FAMILY_TALK_ROOM", "")
+_default_aliases = f"{AGENT_MENTION},{AGENT_MENTION.title()},{AGENT_NAME},openclaw"
+OPENCLAW_ACTOR_IDS = tuple(
+    a.strip().lower()
+    for a in os.environ.get(
+        "OPENCLAW_ACTOR_IDS",
+        os.environ.get("ALFRED_ACTOR_IDS", _default_aliases),
+    ).split(",")
+    if a.strip()
+)
+BOT_ACTOR_IDS = tuple(
+    a.strip().lower()
+    for a in os.environ.get("TALK_BOT_ACTOR_IDS", "bots/openclaw,openclaw").split(",")
+    if a.strip()
+)
+
+_HOUSEHOLD_PROPOSAL_RE = re.compile(
+    rf"(?i)@?{re.escape(AGENT_NAME)}\s+(YES|NO|EDIT)\s+"
+    r"(enrich-calendar-|enrich-chore-|ask-)[0-9]+"
+)
+
+
+def _is_household_proposal(text: str) -> bool:
+    return bool(_HOUSEHOLD_PROPOSAL_RE.search(normalize_talk_text(text)))
+
+
+def _parse_create_message(body: dict) -> tuple[str, str, str, str] | None:
+    if body.get("type") != "Create":
+        return None
+    actor = body.get("actor") or {}
+    obj = body.get("object") or {}
+    target = body.get("target") or {}
+    actor_id = (actor.get("id") or "").strip()
+    text = (obj.get("content") or obj.get("name") or "").strip()
+    room_token = extract_room_token((target.get("id") or "").strip())
+    actor_name = (actor.get("name") or actor_id or "unknown").strip()
+    if not (actor_id and room_token):
+        return None
+    return room_token, text, actor_id, actor_name
+
+
+def _run_fast_path(script: str, text: str, room_token: str) -> bool:
+    clean = extract_user_message(text)
+    try:
+        result = subprocess.run(
+            ["bash", script, clean, room_token],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        print(
+            f"[shim] {os.path.basename(script)} room={room_token} text={clean[:80]!r} "
+            f"rc={result.returncode} out={(result.stdout or '')[:160]!r} "
+            f"err={(result.stderr or '')[:120]!r}",
+            file=sys.stderr,
+        )
+        return result.returncode == 0
+    except Exception as exc:
+        print(f"[shim] fast-path EXCEPTION script={script}: {exc}", file=sys.stderr)
+        return False
+
+
+def _post_talk(room_token: str, message: str) -> None:
+    talk_post = os.path.expanduser("~/.openclaw/scripts/talk-post.sh")
+    if not os.path.isfile(talk_post):
+        return
+    subprocess.run(
+        ["bash", talk_post, message, room_token],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def _forward(raw: bytes, headers: dict[str, str]) -> tuple[int, bytes]:
+    req = urllib.request.Request(UPSTREAM, data=raw, method="POST")
+    skip = {"host", "content-length", "transfer-encoding", "connection"}
+    for key, value in headers.items():
+        if key.lower() in skip:
+            continue
+        req.add_header(key, value)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+
+
+class ShimHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        if length > 1_000_000:
+            self.send_response(413)
+            self.end_headers()
+            return
+        raw = self.rfile.read(length)
+        path = self.path.split("?", 1)[0]
+        if path not in ("/nextcloud-talk-webhook", "/"):
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            status, out = _forward(raw, dict(self.headers))
+            self.send_response(status)
+            self.end_headers()
+            if out:
+                self.wfile.write(out)
+            return
+
+        event_type = body.get("type") or ""
+        if event_type != "Create":
+            print(f"[shim] drop non-Create type={event_type!r}", file=sys.stderr)
+            self.send_response(200)
+            self.end_headers()
+            return
+
+        parsed = _parse_create_message(body)
+        if parsed:
+            room_token, text, actor_id, actor_name = parsed
+            actor_lc = actor_id.lower()
+            actor_name_lc = actor_name.lower()
+
+            if is_noise_echo(text):
+                print(
+                    f"[shim] drop noise echo room={room_token} actor={actor_id} "
+                    f"tool_json={is_tool_json_payload(text)}",
+                    file=sys.stderr,
+                )
+                self.send_response(200)
+                self.end_headers()
+                return
+
+            if actor_lc in OPENCLAW_ACTOR_IDS or actor_lc == AGENT_NAME:
+                print(
+                    f"[shim] drop self-echo room={room_token} actor={actor_id}",
+                    file=sys.stderr,
+                )
+                self.send_response(200)
+                self.end_headers()
+                return
+
+            if actor_lc in BOT_ACTOR_IDS or actor_name_lc == "openclaw":
+                if is_overflow_echo(text):
+                    print(
+                        f"[shim] drop bot overflow echo room={room_token} actor={actor_id}",
+                        file=sys.stderr,
+                    )
+                    self.send_response(200)
+                    self.end_headers()
+                    return
+
+            household_dispatch = os.path.expanduser(
+                "~/.openclaw/scripts/skylight-family-hub-dispatch.sh"
+            )
+            if _is_household_proposal(text) and os.path.isfile(household_dispatch):
+                if _run_fast_path(household_dispatch, text, room_token):
+                    self.send_response(200)
+                    self.end_headers()
+                    return
+
+            if is_subaru_command(text, AGENT_NAME):
+                fast_path = os.path.expanduser("~/.openclaw/scripts/subaru-talk-fast-path.sh")
+                ok = os.path.isfile(fast_path) and _run_fast_path(fast_path, text, room_token)
+                if not ok:
+                    _post_talk(
+                        room_token,
+                        "Subaru: command failed. Try: @openclaw subaru status",
+                    )
+                self.send_response(200)
+                self.end_headers()
+                return
+
+        status, out = _forward(raw, dict(self.headers))
+        self.send_response(status)
+        self.end_headers()
+        if out:
+            self.wfile.write(out)
+
+    def do_GET(self):
+        if self.path.split("?", 1)[0] in ("/", "/health"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps(
+                    {
+                        "service": "talk-webhook-shim",
+                        "upstream": UPSTREAM,
+                        "agent_name": AGENT_NAME,
+                    }
+                ).encode()
+            )
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, fmt, *args):
+        print(f"[shim] {self.address_string()} {fmt % args}", file=sys.stderr)
+
+
+def main() -> None:
+    server = HTTPServer((LISTEN_HOST, LISTEN_PORT), ShimHandler)
+    print(
+        f"[shim] Talk webhook shim on {LISTEN_HOST}:{LISTEN_PORT} → {UPSTREAM}",
+        file=sys.stderr,
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    server.server_close()
+
+
+if __name__ == "__main__":
+    main()

@@ -18,4 +18,4 @@ The Phase 2 REST bridge binds to loopback by default. Do not expose `:8790` on L
 
 ## Reporting
 
-Report security issues privately to the repo owner — do not open public issues for credential or actuation bypass findings.
+Report security issues via [GitHub Security Advisories](https://github.com/vdroners/openclaw-subaru/security/advisories/new) or privately to the repo owner — do not open public issues for credential or actuation bypass findings.

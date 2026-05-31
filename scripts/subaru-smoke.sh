@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 export SUBARU_DRY_RUN=1
 export SUBARU_ENABLED=0
+export SUBARU_ACTUATION_ENABLED=0
 
 pass() { echo "Gate SUB-SMOKE: PASS — $1"; }
 fail() { echo "Gate SUB-SMOKE: FAIL — $1" >&2; FAIL=1; }
@@ -83,7 +84,7 @@ _run_dry "auth-check" auth check || true
 _run_dry "pin-test" pin test || true
 
 for act_cmd in lock unlock stop horn lights charge; do
-  if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run "$act_cmd" >/tmp/subaru-smoke-act.json 2>&1; then
+  if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run "$act_cmd" >/tmp/subaru-smoke-act.json 2>/dev/null; then
     if python3 -c "import json; p=json.load(open('/tmp/subaru-smoke-act.json')); exit(0 if p.get('error_code')=='actuation_disabled' else 1)"; then
       pass "$act_cmd actuation_disabled"
     else

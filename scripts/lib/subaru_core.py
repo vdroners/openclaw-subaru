@@ -78,8 +78,11 @@ def _redact_raw(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 class Settings:
-    def __init__(self, dry_run: bool = False) -> None:
-        self.dry_run = dry_run or os.environ.get("SUBARU_DRY_RUN", "") == "1"
+    def __init__(self, dry_run: bool | None = None) -> None:
+        if dry_run is None:
+            self.dry_run = os.environ.get("SUBARU_DRY_RUN", "") == "1"
+        else:
+            self.dry_run = bool(dry_run)
         self.enabled = os.environ.get("SUBARU_ENABLED", "0") == "1"
         self.username = os.environ.get("SUBARU_USERNAME", "").strip()
         self.password = _read_secret(os.environ.get("SUBARU_PASSWORD_FILE"))

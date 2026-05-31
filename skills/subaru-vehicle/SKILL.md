@@ -53,13 +53,13 @@ Never echo PIN or password in Talk replies.
 
 ## Talk fast-path
 
-Messages matching `{OPENCLAW_AGENT_MENTION} subaru …` should exec **`subaru-dispatch-exec.sh`** before LLM improvisation:
+Messages matching `@?openclaw subaru …` (with or without `@`) or `{mention-userN} subaru …` are handled by **`subaru-talk-fast-path.sh`** on the Talk webhook shim (**:8788**) — **no LLM**. The relay on :8789 has the same pattern as a secondary path.
 
 ```bash
-bash ~/.openclaw/scripts/subaru-dispatch-exec.sh "<exact user message>"
+bash ~/.openclaw/scripts/subaru-talk-fast-path.sh "<exact user message>" <room_token>
 ```
 
-Parse-only (no network): `subaru-dispatch.sh`. Dry-run: `subaru-dispatch-exec.sh --dry-run "…"`.
+Parse-only: `subaru-dispatch.sh`. Dry-run exec: `subaru-dispatch-exec.sh --dry-run "…"`.
 
 Example mentions: `status`, `health-report`, `locate`, `start [preset]`, `lock`, `unlock driver`.
 

@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Shared Subaru Talk fast-path detection + NC message normalization."""
+
+from __future__ import annotations
+
+import json
+import re
+
+MENTION_CHIP_RE = re.compile(r"\{mention-user\d+\}", re.IGNORECASE)
+ROOM_TOKEN_RE = re.compile(r"/(?:call|chat)/([a-z0-9]+)(?:/|$)", re.IGNORECASE)
+_SUBARU_VERB_RE = re.compile(
+    r"(?i)\b(status|summary|locate|maps|maps-link|condition|capabilities|fetch|"
+    r"presets|lock|unlock|stop|horn|lights|charge|start|health-report|health)\b"
+)
+
+
+def normalize_talk_text(text: str) -> str:
+    cleaned = MENTION_CHIP_RE.sub(" ", text or "")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def extract_user_message(text: str) -> str:
+    """Plain Talk text for dispatch — never pass raw tool JSON to bash grep."""
+    raw = (text or "").strip()
+    if raw.startswith("{") and '"message"' in raw:
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict):
+                msg = obj.get("message")
+                if isinstance(msg, str) and msg.strip():
+                    return normalize_talk_text(msg)
+        except json.JSONDecodeError:
+            pass
+    return normalize_talk_text(raw)
+
+
+def is_tool_json_payload(text: str) -> bool:
+    """OpenClaw / NC bot echo of a structured tool invocation — not operator input."""
+    raw = (text or "").strip()
+    if not raw.startswith("{"):
+        return False
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(obj, dict) and "parameters" in obj
+
+
+def extract_room_token(raw: str) -> str:
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    match = ROOM_TOKEN_RE.search(raw)
+    if match:
+        return match.group(1)
+    if "/" in raw:
+        return raw.rstrip("/").split("/")[-1]
+    return raw
+
+
+def is_subaru_command(text: str, agent_name: str = "openclaw") -> bool:
+    if is_tool_json_payload(text):
+        return False
+    norm = extract_user_message(text)
+    if not norm:
+        return False
+    agent_re = re.compile(rf"(?i)\b@?{re.escape(agent_name)}\s+subaru\b")
+    if agent_re.search(norm):
+        return True
+    if MENTION_CHIP_RE.search(text or "") and re.search(r"(?i)\bsubaru\b", norm):
+        return True
+    return False
+
+
+def is_overflow_echo(text: str) -> bool:
+    lower = (text or "").lower()
+    return "context overflow" in lower or "subaru_err" in lower
+
+
+def is_noise_echo(text: str) -> bool:
+    """Bot/LLM junk that must not re-trigger OpenClaw or fast-path."""
+    if is_overflow_echo(text):
+        return True
+    if is_tool_json_payload(text):
+        return True
+    norm = extract_user_message(text)
+    if norm.startswith("{") and norm.endswith("}"):
+        return True
+    return False

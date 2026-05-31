@@ -6,6 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
 ROOT="${OPENCLAW_SUBARU_ROOT:-}"
 
+# Preserve gate/smoke overrides before .env reload (explicit 0 must win).
+_preserve_actuation="${SUBARU_ACTUATION_ENABLED-__unset__}"
+_preserve_enabled="${SUBARU_ENABLED-__unset__}"
+
 if [[ -z "$ROOT" && -d "${SCRIPT_DIR}/../config" ]]; then
   ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 fi
@@ -71,3 +75,10 @@ export SUBARU_PYTHON
 
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/load-agent-env.sh" 2>/dev/null || true
+
+if [[ "$_preserve_enabled" != "__unset__" ]]; then
+  export SUBARU_ENABLED="$_preserve_enabled"
+fi
+if [[ "$_preserve_actuation" != "__unset__" ]]; then
+  export SUBARU_ACTUATION_ENABLED="$_preserve_actuation"
+fi

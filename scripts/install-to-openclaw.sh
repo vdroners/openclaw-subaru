@@ -58,6 +58,20 @@ for f in "${ROOT}"/scripts/*.py; do
   link_one "$f" "${OPENCLAW_DIR}/scripts/$base"
 done
 
+if [[ -d "${ROOT}/scripts/lib" ]]; then
+  mkdir -p "${OPENCLAW_DIR}/scripts/lib"
+  for f in "${ROOT}"/scripts/lib/*.py; do
+    [[ -f "$f" ]] || continue
+    base=$(basename "$f")
+    link_one "$f" "${OPENCLAW_DIR}/scripts/lib/$base"
+  done
+fi
+
+if [[ -f "${ROOT}/scripts/talk-webhook-shim.py" ]]; then
+  cp "${ROOT}/scripts/talk-webhook-shim.py" "${OPENCLAW_DIR}/talk-webhook-shim.py"
+  echo "install: copied talk-webhook-shim.py → ${OPENCLAW_DIR}/talk-webhook-shim.py"
+fi
+
 sync_skill "${ROOT}/skills/subaru-vehicle" "${OPENCLAW_DIR}/workspace/skills/subaru-vehicle"
 
 if [[ -f "${OPENCLAW_DIR}/.env" ]]; then

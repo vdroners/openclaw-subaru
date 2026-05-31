@@ -6,6 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/load-subaru-env.sh"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/load-agent-env.sh" 2>/dev/null || true
 
 DRY=0
 [[ "${1:-}" == "--dry-run" ]] && DRY=1 && shift
@@ -24,10 +26,23 @@ action="$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['action'])"
 args_json="$(python3 -c "import json,sys; print(json.dumps(json.loads(sys.argv[1]).get('args',[])))" "$parsed")"
 
 ACTUATION_CMDS="lock unlock start stop horn lights charge"
-if echo "$ACTUATION_CMDS" | grep -qw "$action"; then
+case " $ACTUATION_CMDS " in
+  *" $action "*) is_actuation=1 ;;
+  *) is_actuation=0 ;;
+esac
+if [[ "$is_actuation" -eq 1 ]]; then
   if [[ "${SUBARU_ACTUATION_ENABLED:-0}" != "1" && "${SUBARU_FASTPATH_ACTUATION:-0}" != "1" ]]; then
-    echo "SUBARU_DISPATCH blocked actuation action=$action (set SUBARU_ACTUATION_ENABLED=1 after Tier 3 pass file)"
-    exit 1
+    python3 - "$action" <<'PY'
+import json, sys
+action = sys.argv[1]
+print(json.dumps({
+    "ok": False,
+    "error_code": "actuation_disabled",
+    "errors": [f"Remote {action} is disabled. Set SUBARU_ACTUATION_ENABLED=1 after operator approval."],
+    "nickname": "Subaru",
+}))
+PY
+    exit 0
   fi
 fi
 

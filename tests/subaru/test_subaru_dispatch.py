@@ -38,3 +38,23 @@ def test_health_report_phrase():
 def test_status_phrase_case_insensitive():
     payload = _run_dispatch("@OPENCLAW subaru status")
     assert payload["action"] == "status"
+
+
+def test_status_without_at_mention():
+    payload = _run_dispatch("Openclaw subaru status", mention="@openclaw")
+    assert payload["action"] == "status"
+
+
+def test_status_with_at_openclaw():
+    payload = _run_dispatch("@openclaw subaru summary", mention="@openclaw")
+    assert payload["action"] == "summary"
+
+
+def test_mention_chip_agent_subaru_status():
+    payload = _run_dispatch("{mention-user1} Openclaw subaru status", mention="@openclaw")
+    assert payload["action"] == "status"
+
+
+def test_mention_chip_subaru_only():
+    payload = _run_dispatch("{mention-user1} subaru status", mention="@openclaw")
+    assert payload["action"] == "status"

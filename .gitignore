@@ -6,6 +6,7 @@ state/*
 logs/*
 !logs/.gitkeep
 __pycache__/
+.pytest_cache/
 *.pyc
 .DS_Store
 node_modules/
