@@ -37,6 +37,12 @@ BLOCKLIST=(
   'Wesley'
 )
 
+# Subaru-specific scrub (SUB-SCRUB) — exclude example configs and test fixtures
+SUBARU_BLOCKLIST=(
+  'mysubaru\.com'
+  '@subaru\.com'
+)
+
 echo "=== scrub-for-publish.sh ==="
 for pat in "${BLOCKLIST[@]}"; do
   hit=0
@@ -56,6 +62,43 @@ for pat in "${BLOCKLIST[@]}"; do
   fi
 done
 rm -f /tmp/scrub-hit.txt
+
+for pat in "${SUBARU_BLOCKLIST[@]}"; do
+  hit=0
+  rm -f /tmp/scrub-sub-hit.txt
+  if grep -rEn "$pat" . \
+    --exclude-dir=.git \
+    --exclude-dir=__pycache__ \
+    --exclude-dir=tests \
+    --exclude=scrub-for-publish.sh \
+    --exclude=.env.example \
+    --exclude=SUBARU-VEHICLE.md \
+    --exclude=CHANGELOG.md \
+    >/tmp/scrub-sub-hit.txt 2>/dev/null; then
+    hit=1
+  fi
+  if [[ "$hit" -eq 1 ]]; then
+    cat /tmp/scrub-sub-hit.txt >&2
+    echo "SUB-SCRUB FAIL: blocklist hit: $pat" >&2
+    FAIL=1
+  fi
+done
+rm -f /tmp/scrub-sub-hit.txt
+
+# Real-looking VIN in tracked files (allow example placeholder file only)
+if grep -rEn '4S4[A-Z0-9]{13}' . \
+  --exclude-dir=.git \
+  --exclude-dir=__pycache__ \
+  --exclude-dir=tests \
+  --exclude=scrub-for-publish.sh \
+  --exclude=subaru-vehicle.example.json \
+  --exclude=subaru_core.py \
+  >/tmp/scrub-vin.txt 2>/dev/null; then
+  cat /tmp/scrub-vin.txt >&2
+  echo "SUB-SCRUB FAIL: real-looking VIN outside example config" >&2
+  FAIL=1
+fi
+rm -f /tmp/scrub-vin.txt
 
 # Legacy agent branding should not appear in publishable tree
 if grep -rEi '\balfred\b' . \
@@ -82,5 +125,6 @@ fi
 
 if [[ "$FAIL" -eq 0 ]]; then
   echo "Gate S1: PASS — no blocklist hits"
+  echo "Gate SUB-SCRUB: PASS — no Subaru secret patterns in tracked tree"
 fi
 exit $FAIL

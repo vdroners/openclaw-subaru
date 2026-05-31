@@ -103,6 +103,42 @@ else
   warn "AI-CRON-4 skipped (manifest or jobs.json missing)"
 fi
 
+# SUB-CRON-DEDUP: alert state should respect min interval between posts
+ALERT_STATE="${OPENCLAW}/state/subaru-last-alert.json"
+if [[ -f "$ALERT_STATE" ]]; then
+  while read -r line; do
+    case "$line" in
+      PASS*) ok "${line#PASS }" ;;
+      WARN*) warn "${line#WARN }" ;;
+      FAIL*) bad "${line#FAIL }" ;;
+    esac
+  done < <(python3 - "$ALERT_STATE" "${SUBARU_ALERT_MIN_INTERVAL_H:-6}" <<'PY'
+import json, sys
+from pathlib import Path
+from datetime import datetime, timezone
+p = Path(sys.argv[1])
+min_h = float(sys.argv[2])
+data = json.loads(p.read_text(encoding="utf-8"))
+posted = data.get("last_post_ts")
+if not posted:
+    print("PASS SUB-CRON-DEDUP no recent post timestamp")
+    raise SystemExit
+try:
+    ts = datetime.fromisoformat(str(posted).replace("Z", "+00:00"))
+except ValueError:
+    print("WARN SUB-CRON-DEDUP unreadable last_post_ts")
+    raise SystemExit
+age_h = (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds() / 3600.0
+if age_h < min_h:
+    print(f"WARN SUB-CRON-DEDUP last post {age_h:.1f}h ago (< {min_h}h min interval)")
+else:
+    print(f"PASS SUB-CRON-DEDUP last post {age_h:.1f}h ago")
+PY
+)
+else
+  ok "SUB-CRON-DEDUP no alert state file"
+fi
+
 echo ""
 echo "=== openclaw-ai-gates summary (hard_fail=${HARD_FAIL} soft_fail=${SOFT_FAIL}) ==="
 exit "$HARD_FAIL"

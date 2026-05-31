@@ -53,7 +53,7 @@ bash scripts/subaru-gates.sh --check --live      # after credentials work
 bash scripts/subaru-gates.sh --check --actuation # manual parked tests only
 ```
 
-Full gate reference: [docs/GATES.md](docs/GATES.md). Operator setup: [docs/SUBARU-VEHICLE.md](docs/SUBARU-VEHICLE.md).
+Full gate reference: [docs/GATES.md](docs/GATES.md). Operator setup: [docs/SUBARU-VEHICLE.md](docs/SUBARU-VEHICLE.md). Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ---
 

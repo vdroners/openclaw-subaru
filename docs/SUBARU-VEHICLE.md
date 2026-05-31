@@ -60,11 +60,60 @@ OpenClaw skill + scripts for **MySubaru Connected Services** via the community [
 7. Gates:
 
    ```bash
-   bash scripts/subaru-gates.sh --check
-   bash scripts/subaru-gates.sh --check --live   # after credentials work
+   make publish                              # Tier 0 (CI)
+   make gates                                # Tier 0 + Tier 1 live reads
+   bash scripts/subaru-gates.sh --check --live
    ```
 
-8. After safe parked live tests (lock/start/stop), set `SUBARU_ACTUATION_ENABLED=1`.
+8. Shell cron (CAP-SUB):
+
+   ```bash
+   make shell-cron
+   ```
+
+9. Tier 3 manual actuation (safe parked context):
+
+   ```bash
+   bash scripts/subaru-gates.sh --actuation
+   bash scripts/subaru-record-live-pass.sh
+   # then set SUBARU_ACTUATION_ENABLED=1
+   ```
+
+## Actuation safety tiers
+
+| Tier | Commands | Requirements |
+|------|----------|--------------|
+| 0 | All read-only (`status`, `fetch`, `health-report`, …) | `SUBARU_ENABLED=1` |
+| 1 | horn/lights `--stop` | PIN + actuation enabled |
+| 2 | lock, stop, horn, lights, charge | Tier 1 + chat confirm for horn/lights |
+| 3 | unlock, start | Tier 2 + pass file + explicit confirm |
+
+Audit log: `~/.openclaw/state/subaru-command-log.jsonl` (no secrets).
+
+## Phase 2 Docker bridge
+
+Optional REST API on `127.0.0.1:8790`:
+
+```bash
+docker compose -f compose/docker-compose.subaru-bridge.yml up -d
+make bridge-gates
+```
+
+| Method | Path | Command |
+|--------|------|---------|
+| GET | `/health` | health check |
+| GET | `/status` | status |
+| GET | `/summary` | summary |
+| GET | `/capabilities` | capabilities |
+| GET | `/condition` | condition |
+| GET | `/health-report` | health-report |
+| GET | `/locate` | locate |
+| GET | `/presets` | presets list |
+| POST | `/fetch` | fetch |
+| POST | `/update` | update |
+| POST | `/command` | arbitrary command body |
+
+Set `SUBARU_BRIDGE_URL=http://127.0.0.1:8790` and optional `SUBARU_BRIDGE_KEY_FILE`.
 
 ## Command reference
 
@@ -86,14 +135,6 @@ Set `SUBARU_BRIDGE_URL=http://127.0.0.1:8790` when running the bridge container.
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---------|-----|
-| `auth_invalid` | Re-run subarulink interactive login |
-| `pin_invalid` | Check PIN file; run `subaru-vehicle.sh pin test` |
-| `actuation_disabled` | Set `SUBARU_ACTUATION_ENABLED=1` after live gates |
-| `rate_limited` on locate | Wait `SUBARU_LOCATE_MIN_INTERVAL_H` (default 2h) |
-| Stale lock/door data | Run `fetch` then `condition`; some fields report UNKNOWN |
-
-## Security
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the full matrix.
 
 Unofficial API — may break without notice. Actuation commands are logged to `~/.openclaw/state/subaru-command-log.jsonl` (no secrets).

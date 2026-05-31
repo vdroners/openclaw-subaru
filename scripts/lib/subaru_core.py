@@ -120,7 +120,7 @@ def load_dry_fixture() -> dict[str, Any]:
     return {
         "ok": True,
         "command": "status",
-        "vin": self.settings.vin or "4S4BRCKC8N3400001",
+        "vin": os.environ.get("SUBARU_VIN") or None,
         "nickname": "Outback",
         "timestamp": utc_now_iso(),
         "capabilities": {"remote_status": True, "res_status": True},
@@ -382,7 +382,7 @@ class SubaruRunner:
         base = load_dry_fixture()
         caps = base.get("capabilities") or {}
         data = dict(base.get("data") or {})
-        if command in ("start", "remote_start", "lock", "unlock", "horn", "lights", "charge", "stop", "remote_stop"):
+        if command in ("start", "remote_start", "lock", "unlock", "horn", "lights", "stop", "remote_stop"):
             if not self.settings.actuation_enabled and os.environ.get("SUBARU_DRY_RUN") != "force-actuation":
                 return make_response(
                     ok=False,
@@ -426,6 +426,56 @@ class SubaruRunner:
                 command=command,
                 settings=self.settings,
                 data={"maps_url": "https://www.google.com/maps?q=45.5231,-122.6765"},
+            )
+        if command == "pin-test":
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                data={"pin_valid": True},
+            )
+        if command == "charge":
+            caps_ev = dict(caps)
+            if not caps_ev.get("ev"):
+                return make_response(
+                    ok=True,
+                    command=command,
+                    settings=self.settings,
+                    capabilities=caps,
+                    data={"skipped": True, "reason": "not_ev"},
+                    warnings=["EV not available — charge skipped"],
+                )
+            return make_response(ok=True, command=command, settings=self.settings, capabilities=caps, data={"charged": False, "dry_run": True})
+        if command == "presets-show":
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                data={"presets_detail": [{"name": "Default", "temp_f": 72}]},
+            )
+        if command == "raw":
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                capabilities=caps,
+                data={"raw_redacted": {"vehicle_status": data.get("vehicle_status", {})}},
+            )
+        if command == "show":
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                capabilities=caps,
+                data=data,
+            )
+        if command == "update":
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                capabilities=caps,
+                data={"refreshed": True, **data},
             )
         if command == "presets-list":
             return make_response(ok=True, command=command, settings=self.settings, data={"presets": ["Default", "Winter"]})

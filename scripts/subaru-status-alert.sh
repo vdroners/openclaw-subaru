@@ -81,6 +81,6 @@ TALK_POST="$(_resolve_talk_helper talk-post.sh)"
 if [[ -n "$TALK_POST" ]]; then
   SKYLIGHT_OPS_TALK_ROOM="$ROOM" bash "$TALK_POST" "$msg" >/dev/null 2>&1 || true
 fi
-python3 -c "import json; json.dump({'verdict': '$verdict', 'score': $score}, open('$STATE','w'))"
+python3 -c "import json; d={'verdict': '$verdict', 'score': $score, 'last_post_ts': '$(date -u +%Y-%m-%dT%H:%M:%SZ)'}; json.dump(d, open('$STATE','w'))"
 echo "SUBARU_ALERT_POSTED verdict=${verdict} score=${score}"
 exit 0

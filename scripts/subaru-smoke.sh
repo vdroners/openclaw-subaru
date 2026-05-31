@@ -16,7 +16,6 @@ bash "${SCRIPT_DIR}/validate-subaru-vehicle.sh" "${ROOT}/config/subaru-vehicle.e
 
 if ! python3 - "${ROOT}/config/subaru-response.schema.json" "${ROOT}/tests/subaru/fixtures/status_ok.json" <<'PY'
 import json, sys
-from pathlib import Path
 schema = json.load(open(sys.argv[1]))
 fixture = json.load(open(sys.argv[2]))
 required = schema.get("required", [])
@@ -30,31 +29,69 @@ then
   FAIL=1
 fi
 
+_validate_envelope() {
+  local out="$1"
+  python3 - "$out" "${ROOT}/config/subaru-response.schema.json" <<'PY'
+import json, sys
+payload = json.load(open(sys.argv[1]))
+required = json.load(open(sys.argv[2])).get("required", [])
+missing = [k for k in required if k not in payload]
+if missing:
+    print(f"missing keys: {missing}", file=sys.stderr)
+    sys.exit(1)
+if "ok" not in payload or "command" not in payload or "data" not in payload:
+    sys.exit(1)
+PY
+}
+
+_run_dry() {
+  local label="$1"
+  shift
+  if ! bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run "$@" >/tmp/subaru-smoke.json 2>/dev/null; then
+    fail "$label dry-run"
+    return 1
+  fi
+  if ! _validate_envelope /tmp/subaru-smoke.json; then
+    fail "$label invalid envelope"
+    return 1
+  fi
+  return 0
+}
+
 _cmds=(
   "status"
   "summary"
+  "raw"
+  "show"
   "capabilities"
   "health"
   "health-report"
   "condition"
   "maps-link"
   "fetch"
+  "update"
   "locate"
+  "charge"
 )
 for c in "${_cmds[@]}"; do
-  if ! bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run "$c" >/tmp/subaru-smoke.json 2>/dev/null; then
-    fail "$c dry-run"
-    continue
-  fi
-  if ! python3 - /tmp/subaru-smoke.json <<'PY'
-import json, sys
-p = json.load(open(sys.argv[1]))
-assert "ok" in p and "command" in p and "data" in p
-PY
-  then
-    fail "$c invalid envelope"
-  fi
+  _run_dry "$c" "$c" || true
 done
+
+_run_dry "presets-list" presets list || true
+_run_dry "presets-show" presets show || true
+_run_dry "vehicles-list" vehicles list || true
+_run_dry "auth-check" auth check || true
+_run_dry "pin-test" pin test || true
+
+if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run start >/tmp/subaru-smoke-start.json 2>/dev/null; then
+  if python3 -c "import json; p=json.load(open('/tmp/subaru-smoke-start.json')); exit(0 if p.get('error_code')=='actuation_disabled' else 1)"; then
+    pass "start blocked with actuation_disabled"
+  else
+    fail "start dry-run should return actuation_disabled"
+  fi
+else
+  pass "start rejected when actuation disabled"
+fi
 
 pass "dry-run command envelope checks"
 echo "SUBARU_SMOKE_OK"

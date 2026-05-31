@@ -58,6 +58,12 @@ def health_report(x_api_key: str | None = Header(default=None, alias="X-API-Key"
     return run_command("health-report", {"prefetch": True})
 
 
+@app.get("/condition")
+def condition(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> dict:
+    _auth(x_api_key)
+    return run_command("condition", {})
+
+
 @app.get("/locate")
 def locate(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> dict:
     _auth(x_api_key)

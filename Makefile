@@ -1,4 +1,4 @@
-.PHONY: install gates scrub publish smoke ai-gates shell-cron
+.PHONY: install gates gates-bridge scrub publish smoke ai-gates shell-cron bridge-gates
 
 OPENCLAW_DIR ?= $(HOME)/.openclaw
 
@@ -8,6 +8,8 @@ install:
 gates: scrub publish
 	$(MAKE) ai-gates
 	bash scripts/subaru-gates.sh --check
+
+gates-bridge: bridge-gates
 
 scrub:
 	bash scripts/scrub-for-publish.sh
@@ -20,6 +22,9 @@ smoke:
 
 ai-gates:
 	bash scripts/openclaw-ai-gates.sh --check
+
+bridge-gates:
+	bash scripts/subaru-bridge-gates.sh
 
 shell-cron:
 	OPENCLAW_SUBARU_ROOT=$$(pwd) python3 scripts/install-openclaw-shell-cron.sh
