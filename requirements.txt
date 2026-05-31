@@ -1,0 +1,2 @@
+subarulink>=0.7.19
+aiohttp>=3.9.0

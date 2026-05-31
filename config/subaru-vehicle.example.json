@@ -1,0 +1,15 @@
+{
+  "vin": "4S4BRCKC8N3400001",
+  "nickname": "Outback",
+  "remote_start_preset": "Default",
+  "device_id": 1234567890,
+  "device_name": "openclaw-homelab",
+  "alert_thresholds": {
+    "fuel_percent_warn": 15,
+    "fuel_percent_fail": 5,
+    "fuel_range_miles_warn": 30,
+    "fuel_range_miles_fail": 10,
+    "staleness_hours_warn": 24,
+    "staleness_hours_fail": 72
+  }
+}

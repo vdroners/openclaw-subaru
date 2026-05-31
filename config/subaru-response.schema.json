@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Subaru CLI response envelope",
+  "type": "object",
+  "required": ["ok", "command", "timestamp", "data", "warnings", "errors"],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "command": { "type": "string", "minLength": 1 },
+    "vin": { "type": ["string", "null"] },
+    "nickname": { "type": ["string", "null"] },
+    "timestamp": { "type": "string" },
+    "capabilities": { "type": ["object", "null"] },
+    "data": { "type": "object" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "error_code": { "type": ["string", "null"] }
+  },
+  "additionalProperties": true
+}

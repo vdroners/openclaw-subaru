@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "command": "status",
+  "vin": "4S4BRCKC8N3400001",
+  "nickname": "Outback",
+  "timestamp": "2026-05-31T12:00:00+00:00",
+  "capabilities": {
+    "remote_status": true,
+    "res_status": true,
+    "safety_status": true,
+    "subscription_status": true,
+    "has_tpms": true,
+    "has_lock_status": true,
+    "has_power_windows": true,
+    "has_sunroof": false,
+    "ev": false,
+    "api_gen": "g3",
+    "model_year": "2022",
+    "model_name": "Outback",
+    "device_registered": true,
+    "pin_required": true
+  },
+  "data": {
+    "vehicle_status": {
+      "ODOMETER": 42100,
+      "DISTANCE_TO_EMPTY_FUEL": 280,
+      "REMAINING_FUEL_PERCENT": 62,
+      "AVG_FUEL_CONSUMPTION": 28.5,
+      "VEHICLE_STATE_TYPE": "IGNITION_OFF",
+      "LOCATION_VALID": true,
+      "LATITUDE": 45.5231,
+      "LONGITUDE": -122.6765
+    },
+    "vehicle_health": {
+      "ISTROUBLE": false,
+      "FEATURES": {}
+    },
+    "meta": {
+      "staleness_seconds": 3600
+    }
+  },
+  "warnings": [],
+  "errors": [],
+  "error_code": null
+}

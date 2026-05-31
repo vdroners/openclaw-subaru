@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Subaru vehicle operator config",
+  "type": "object",
+  "required": ["vin", "nickname"],
+  "properties": {
+    "vin": {
+      "type": "string",
+      "pattern": "^[A-HJ-NPR-Z0-9]{11,17}$",
+      "description": "Vehicle identification number"
+    },
+    "nickname": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "remote_start_preset": {
+      "type": "string",
+      "maxLength": 30
+    },
+    "device_id": {
+      "type": "integer",
+      "minimum": 1000000000,
+      "maximum": 9999999999
+    },
+    "device_name": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "alert_thresholds": {
+      "type": "object",
+      "properties": {
+        "fuel_percent_warn": { "type": "number", "minimum": 0, "maximum": 100 },
+        "fuel_percent_fail": { "type": "number", "minimum": 0, "maximum": 100 },
+        "fuel_range_miles_warn": { "type": "number", "minimum": 0 },
+        "fuel_range_miles_fail": { "type": "number", "minimum": 0 },
+        "staleness_hours_warn": { "type": "number", "minimum": 1 },
+        "staleness_hours_fail": { "type": "number", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

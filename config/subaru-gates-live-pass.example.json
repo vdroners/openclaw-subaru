@@ -1,0 +1,10 @@
+{
+  "passed_at": "2026-05-31T00:00:00+00:00",
+  "gates": {
+    "SUB-LIVE-LOCK": true,
+    "SUB-LIVE-UNLOCK": true,
+    "SUB-LIVE-START": true,
+    "SUB-LIVE-STOP": true
+  },
+  "note": "Copy to ~/.openclaw/state/subaru-gates-live-pass.json after manual actuation verification"
+}

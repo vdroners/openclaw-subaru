@@ -1,0 +1,20 @@
+# Optional MySubaru REST bridge (loopback only).
+# Build from repo root: docker compose -f compose/docker-compose.subaru-bridge.yml up -d --build
+services:
+  subaru-bridge:
+    build:
+      context: ..
+      dockerfile: services/subaru-bridge/Dockerfile
+    network_mode: host
+    environment:
+      SUBARU_ENABLED: ${SUBARU_ENABLED:-1}
+      SUBARU_USERNAME: ${SUBARU_USERNAME:-}
+      SUBARU_PASSWORD: ${SUBARU_PASSWORD:-}
+      SUBARU_PIN: ${SUBARU_PIN:-}
+      SUBARU_VIN: ${SUBARU_VIN:-}
+      SUBARU_COUNTRY: ${SUBARU_COUNTRY:-USA}
+      SUBARU_DEVICE_ID: ${SUBARU_DEVICE_ID:-1234567890}
+      SUBARU_DEVICE_NAME: ${SUBARU_DEVICE_NAME:-openclaw-homelab}
+      SUBARU_ACTUATION_ENABLED: ${SUBARU_ACTUATION_ENABLED:-0}
+      SUBARU_BRIDGE_API_KEY: ${SUBARU_BRIDGE_API_KEY:-}
+    restart: unless-stopped

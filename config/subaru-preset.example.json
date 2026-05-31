@@ -1,0 +1,12 @@
+{
+  "name": "Winter",
+  "climateZoneFrontTemp": 72,
+  "climateZoneFrontAirMode": "FEET",
+  "climateZoneFrontAirVolume": 3,
+  "heatedSeatFrontLeft": 2,
+  "heatedSeatFrontRight": 2,
+  "rearDefroster": 1,
+  "recirculateAirConditionOn": 0,
+  "airConditionOn": 1,
+  "runTimeMinutes": 10
+}
