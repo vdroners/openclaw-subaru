@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
 # Test Talk fast-path phrase parsing (no network).
-# Usage: subaru-dispatch-test.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/load-agent-env.sh" 2>/dev/null || true
+MENTION="${OPENCLAW_AGENT_MENTION:-@openclaw}"
 FAIL=0
 
 phrases=(
-  '@openclaw subaru status'
-  '@openclaw subaru summary'
-  '@openclaw subaru health'
-  '@openclaw subaru locate'
-  '@openclaw subaru maps'
-  '@openclaw subaru condition'
-  '@openclaw subaru capabilities'
-  '@openclaw subaru fetch'
-  '@openclaw subaru lock'
-  '@openclaw subaru unlock'
-  '@openclaw subaru unlock driver'
-  '@openclaw subaru start Winter'
-  '@openclaw subaru stop'
-  '@openclaw subaru horn'
-  '@openclaw subaru lights'
+  "${MENTION} subaru status"
+  "${MENTION} subaru"
+  "${MENTION} subaru summary"
+  "${MENTION} subaru health"
+  "${MENTION} subaru health-report"
+  "${MENTION} subaru locate"
+  "${MENTION} subaru maps"
+  "${MENTION} subaru maps-link"
+  "${MENTION} subaru condition"
+  "${MENTION} subaru capabilities"
+  "${MENTION} subaru fetch"
+  "${MENTION} subaru lock"
+  "${MENTION} subaru unlock"
+  "${MENTION} subaru unlock driver"
+  "${MENTION} subaru start Winter"
+  "${MENTION} subaru stop"
+  "${MENTION} subaru horn"
+  "${MENTION} subaru lights"
 )
 
 for msg in "${phrases[@]}"; do
@@ -35,6 +40,19 @@ for msg in "${phrases[@]}"; do
     FAIL=1
   fi
 done
+
+if bash "${SCRIPT_DIR}/subaru-dispatch.sh" "${MENTION} subaru health-report" >/tmp/subaru-dispatch-hr.json 2>/dev/null; then
+  action="$(python3 -c "import json; print(json.load(open('/tmp/subaru-dispatch-hr.json'))['action'])")"
+  if [[ "$action" != "health-report" ]]; then
+    echo "SUB-DISPATCH FAIL: health-report mapped to $action" >&2
+    FAIL=1
+  fi
+fi
+
+if bash "${SCRIPT_DIR}/subaru-dispatch.sh" "hello world" >/dev/null 2>&1; then
+  echo "SUB-DISPATCH FAIL: non-subaru should exit 1" >&2
+  FAIL=1
+fi
 
 if [[ "$FAIL" -eq 0 ]]; then
   echo "SUB-DISPATCH_TEST_OK phrases=${#phrases[@]}"

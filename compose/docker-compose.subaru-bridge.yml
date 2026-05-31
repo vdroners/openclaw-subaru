@@ -6,15 +6,21 @@ services:
       context: ..
       dockerfile: services/subaru-bridge/Dockerfile
     network_mode: host
+    env_file:
+      - ${OPENCLAW_DIR:-~/.openclaw}/.env
     environment:
       SUBARU_ENABLED: ${SUBARU_ENABLED:-1}
       SUBARU_USERNAME: ${SUBARU_USERNAME:-}
-      SUBARU_PASSWORD: ${SUBARU_PASSWORD:-}
-      SUBARU_PIN: ${SUBARU_PIN:-}
+      SUBARU_PASSWORD_FILE: ${SUBARU_PASSWORD_FILE:-/run/secrets/subaru-password}
+      SUBARU_PIN_FILE: ${SUBARU_PIN_FILE:-/run/secrets/subaru-pin}
       SUBARU_VIN: ${SUBARU_VIN:-}
       SUBARU_COUNTRY: ${SUBARU_COUNTRY:-USA}
       SUBARU_DEVICE_ID: ${SUBARU_DEVICE_ID:-1234567890}
       SUBARU_DEVICE_NAME: ${SUBARU_DEVICE_NAME:-openclaw-homelab}
       SUBARU_ACTUATION_ENABLED: ${SUBARU_ACTUATION_ENABLED:-0}
       SUBARU_BRIDGE_API_KEY: ${SUBARU_BRIDGE_API_KEY:-}
+      SUBARU_BRIDGE_KEY_FILE: ${SUBARU_BRIDGE_KEY_FILE:-/run/secrets/subaru-bridge-key}
+    volumes:
+      - ${OPENCLAW_DIR:-~/.openclaw}/.env.d:/run/secrets:ro
+      - ${HOME}/.subarulink.cfg:/root/.subarulink.cfg:ro
     restart: unless-stopped

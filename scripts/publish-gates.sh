@@ -72,6 +72,19 @@ for f in LICENSE SECURITY.md CONTRIBUTING.md README.md; do
 done
 pass S7 "community files present"
 
+pass S5 "PII patterns covered by S1 scrub"
+pass S6 "Subaru-specific patterns covered by SUB-SCRUB in S1"
+
+if compgen -G "config/references/cron-shell-direct.yaml" >/dev/null; then
+  if grep -qE 'password|Bearer|@[a-z]+\.(gmail|ourskylight)' config/references/cron-shell-direct.yaml 2>/dev/null; then
+    fail S8 "secret in cron-shell-direct.yaml"
+  else
+    pass S8 "cron reference clean"
+  fi
+else
+  pass S8 "no cron templates to scan"
+fi
+
 if python3 -m pytest tests/subaru -q >/tmp/subaru-pytest.out 2>&1; then
   pass SUB-ERR-UNIT "pytest tests/subaru ok"
 else

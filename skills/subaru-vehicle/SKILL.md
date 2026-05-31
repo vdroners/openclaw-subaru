@@ -53,7 +53,15 @@ Never echo PIN or password in Talk replies.
 
 ## Talk fast-path
 
-`@openclaw subaru status|health|locate|start [preset]|lock|unlock|stop`
+Messages matching `{OPENCLAW_AGENT_MENTION} subaru …` should exec **`subaru-dispatch-exec.sh`** before LLM improvisation:
+
+```bash
+bash ~/.openclaw/scripts/subaru-dispatch-exec.sh "<exact user message>"
+```
+
+Parse-only (no network): `subaru-dispatch.sh`. Dry-run: `subaru-dispatch-exec.sh --dry-run "…"`.
+
+Example mentions: `status`, `health-report`, `locate`, `start [preset]`, `lock`, `unlock driver`.
 
 ## Out of scope
 

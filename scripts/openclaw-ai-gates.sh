@@ -139,6 +139,18 @@ else
   ok "SUB-CRON-DEDUP no alert state file"
 fi
 
+if [[ "${SUBARU_ENABLED:-0}" == "1" ]]; then
+  if bash "${SCRIPT_DIR}/subaru-status-alert.sh" --would-post >/tmp/subaru-would-post.out 2>&1; then
+    ok "SUB-CRON-WOULD-POST alert would post or quiet"
+  else
+    if grep -q SUBARU_ALERT_WOULD_POST /tmp/subaru-would-post.out 2>/dev/null; then
+      ok "SUB-CRON-WOULD-POST dedup active (no post needed)"
+    else
+      warn "SUB-CRON-WOULD-POST check inconclusive"
+    fi
+  fi
+fi
+
 echo ""
 echo "=== openclaw-ai-gates summary (hard_fail=${HARD_FAIL} soft_fail=${SOFT_FAIL}) ==="
 exit "$HARD_FAIL"

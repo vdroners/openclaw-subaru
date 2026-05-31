@@ -57,6 +57,12 @@ OpenClaw skill + scripts for **MySubaru Connected Services** via the community [
    bash scripts/install-to-openclaw.sh --force
    ```
 
+   Or use the Phase 2 bootstrap helper (creates local files only — never commits secrets):
+
+   ```bash
+   bash scripts/subaru-operator-init.sh
+   ```
+
 7. Gates:
 
    ```bash
@@ -113,7 +119,13 @@ make bridge-gates
 | POST | `/update` | update |
 | POST | `/command` | arbitrary command body |
 
-Set `SUBARU_BRIDGE_URL=http://127.0.0.1:8790` and optional `SUBARU_BRIDGE_KEY_FILE`.
+Set `SUBARU_BRIDGE_URL=http://127.0.0.1:8790` and optional `SUBARU_BRIDGE_KEY_FILE`. When the bridge URL is set, `subaru-vehicle.sh` passes `--bridge` to the CLI automatically.
+
+## Talk fast-path
+
+Parse-only: `subaru-dispatch.sh "@openclaw subaru status"`.
+
+Execute (runs `subaru-vehicle.sh`): `subaru-dispatch-exec.sh --dry-run "…"` or without `--dry-run` from Talk hooks.
 
 ## Command reference
 
@@ -127,11 +139,7 @@ Optional: `SUBARU_MORNING_BRIEF=1` + `subaru-morning-line.sh` for family digest 
 
 Talk alerts use `SUBARU_ALERT_TALK_ROOM` or `SKYLIGHT_OPS_TALK_ROOM` when [openclaw-skylight](https://github.com/vdroners/openclaw-skylight) is installed (`talk-post.sh`).
 
-## Phase 2 Docker bridge
-
-Optional REST API on `127.0.0.1:8790` — see `services/subaru-bridge/` and `compose/docker-compose.subaru-bridge.yml`.
-
-Set `SUBARU_BRIDGE_URL=http://127.0.0.1:8790` when running the bridge container.
+Alert dedup: `SUBARU_ALERT_MIN_INTERVAL_H` (default 6). Inspect with `subaru-status-alert.sh --would-post`.
 
 ## Troubleshooting
 

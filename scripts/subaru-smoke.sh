@@ -93,6 +93,31 @@ else
   pass "start rejected when actuation disabled"
 fi
 
+for act_cmd in lock unlock stop horn lights; do
+  if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run "$act_cmd" >/tmp/subaru-smoke-act.json 2>&1; then
+    if python3 -c "import json; p=json.load(open('/tmp/subaru-smoke-act.json')); exit(0 if p.get('error_code')=='actuation_disabled' else 1)"; then
+      pass "$act_cmd actuation_disabled"
+    else
+      fail "$act_cmd should return actuation_disabled"
+    fi
+  else
+    pass "$act_cmd rejected when actuation disabled"
+  fi
+done
+
+_extra_dry=(
+  "auth-connect:auth connect"
+  "presets-get:presets get Default"
+  "vehicles-select:vehicles select example-vin-dry-run"
+  "config-set:config set fetch-interval 60"
+)
+for spec in "${_extra_dry[@]}"; do
+  label="${spec%%:*}"
+  cmd="${spec#*:}"
+  # shellcheck disable=SC2086
+  _run_dry "$label" $cmd || true
+done
+
 pass "dry-run command envelope checks"
 echo "SUBARU_SMOKE_OK"
 exit "$FAIL"

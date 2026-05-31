@@ -13,18 +13,18 @@ if ! echo "$MSG" | grep -qiE "@${MENTION_RE}[[:space:]]+subaru"; then
   exit 1
 fi
 
-rest="$(echo "$MSG" | sed -E "s/(?i)@${MENTION_RE}[[:space:]]+subaru[[:space:]]*//")"
+rest="$(printf '%s' "$MSG" | sed -E "s/@${MENTION_RE}[[:space:]]+subaru[[:space:]]*//Ig")"
 sub="$(echo "$rest" | awk '{print tolower($1)}')"
 arg2="$(echo "$rest" | awk '{print $2}')"
 arg3="$(echo "$rest" | awk '{print $3}')"
 
 action="status"
 case "$sub" in
-  status|summary|health|locate|maps|maps-link|condition|capabilities|fetch|presets|lock|unlock|stop|horn|lights|charge|start)
+  status|summary|locate|maps|maps-link|condition|capabilities|fetch|presets|lock|unlock|stop|horn|lights|charge|start)
     action="$sub"
     ;;
   maps) action="maps-link" ;;
-  health-report|health) action="health" ;;
+  health-report|health) action="health-report" ;;
   "") action="status" ;;
   *) action="$sub" ;;
 esac

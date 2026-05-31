@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cron: post Talk alert on Subaru health WARN/FAIL deltas.
-# Usage: subaru-status-alert.sh [--dry-run]
+# Usage: subaru-status-alert.sh [--dry-run] [--would-post]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,7 +29,13 @@ if [[ -n "$NC_ENV" ]]; then
 fi
 
 DRY=0
-[[ "${1:-}" == "--dry-run" ]] && DRY=1
+WOULD_POST=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY=1 ;;
+    --would-post) WOULD_POST=1 ;;
+  esac
+done
 
 if [[ "${SUBARU_ENABLED:-0}" != "1" ]]; then
   echo "SUBARU_ALERT_OK disabled"
@@ -51,20 +57,61 @@ verdict="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('data'
 score="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('data',{}).get('score',100))" "$report" 2>/dev/null || echo 100)"
 
 prev_verdict="pass"
+prev_score=100
+state_json="{}"
 if [[ -f "$STATE" ]]; then
+  state_json="$(cat "$STATE")"
   prev_verdict="$(python3 -c "import json; print(json.load(open('$STATE')).get('verdict','pass'))" 2>/dev/null || echo pass)"
+  prev_score="$(python3 -c "import json; print(json.load(open('$STATE')).get('score',100))" 2>/dev/null || echo 100)"
 fi
 
 if [[ "$verdict" == "pass" && "$prev_verdict" == "pass" ]]; then
   echo "SUBARU_ALERT_OK quiet score=${score}"
-  python3 -c "import json; json.dump({'verdict': '$verdict', 'score': $score}, open('$STATE','w'))"
+  python3 -c "import json; d=json.load(open('$STATE')) if __import__('pathlib').Path('$STATE').is_file() else {}; d.update({'verdict': '$verdict', 'score': $score}); json.dump(d, open('$STATE','w'))"
+  exit 0
+fi
+
+dedup="$(python3 - "$STATE" "$verdict" "$score" "$prev_verdict" "$prev_score" "${SUBARU_ALERT_MIN_INTERVAL_H:-6}" "${SCRIPT_DIR}/lib" <<'PY'
+import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[7])
+from subaru_alert import should_post_alert
+state_path = Path(sys.argv[1])
+state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+ok, reason = should_post_alert(
+    state,
+    verdict=sys.argv[2],
+    score=float(sys.argv[3]),
+    prev_verdict=sys.argv[4],
+    prev_score=float(sys.argv[5]),
+    min_interval_h=float(sys.argv[6]),
+)
+print(f"{int(ok)}:{reason}")
+PY
+)"
+
+should_post="${dedup%%:*}"
+dedup_reason="${dedup#*:}"
+
+if [[ "$WOULD_POST" -eq 1 ]]; then
+  if [[ "$should_post" == "1" ]]; then
+    echo "SUBARU_ALERT_WOULD_POST yes reason=${dedup_reason}"
+    exit 0
+  fi
+  echo "SUBARU_ALERT_WOULD_POST no reason=${dedup_reason}"
+  exit 1
+fi
+
+if [[ "$should_post" != "1" ]]; then
+  echo "SUBARU_ALERT_SKIP dedup reason=${dedup_reason} verdict=${verdict}"
+  python3 -c "import json; d=json.load(open('$STATE')) if __import__('pathlib').Path('$STATE').is_file() else {}; d.update({'verdict': '$verdict', 'score': $score}); json.dump(d, open('$STATE','w'))"
   exit 0
 fi
 
 ROOM="${SUBARU_ALERT_TALK_ROOM:-${SKYLIGHT_OPS_TALK_ROOM:-}}"
 if [[ -z "$ROOM" ]]; then
   echo "SUBARU_ALERT_OK no room configured verdict=${verdict}"
-  python3 -c "import json; json.dump({'verdict': '$verdict', 'score': $score}, open('$STATE','w'))"
+  python3 -c "import json; d=json.load(open('$STATE')) if __import__('pathlib').Path('$STATE').is_file() else {}; d.update({'verdict': '$verdict', 'score': $score}); json.dump(d, open('$STATE','w'))"
   exit 0
 fi
 
@@ -81,6 +128,6 @@ TALK_POST="$(_resolve_talk_helper talk-post.sh)"
 if [[ -n "$TALK_POST" ]]; then
   SKYLIGHT_OPS_TALK_ROOM="$ROOM" bash "$TALK_POST" "$msg" >/dev/null 2>&1 || true
 fi
-python3 -c "import json; d={'verdict': '$verdict', 'score': $score, 'last_post_ts': '$(date -u +%Y-%m-%dT%H:%M:%SZ)'}; json.dump(d, open('$STATE','w'))"
+python3 -c "import json; d=json.load(open('$STATE')) if __import__('pathlib').Path('$STATE').is_file() else {}; d.update({'verdict': '$verdict', 'score': $score, 'last_post_ts': '$(date -u +%Y-%m-%dT%H:%M:%SZ)'}); json.dump(d, open('$STATE','w'))"
 echo "SUBARU_ALERT_POSTED verdict=${verdict} score=${score}"
 exit 0

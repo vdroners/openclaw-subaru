@@ -43,6 +43,7 @@ COMMAND_MAP = {
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="OpenClaw Subaru / MySubaru CLI")
     p.add_argument("--dry-run", action="store_true", help="No network; fixture responses")
+    p.add_argument("--bridge", action="store_true", help="Route via SUBARU_BRIDGE_URL HTTP client")
     sub = p.add_subparsers(dest="command", required=True)
 
     for name in (
@@ -197,6 +198,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     inner, args = resolve_command(ns)
+    use_bridge = (
+        not ns.dry_run
+        and os.environ.get("SUBARU_BRIDGE_URL")
+        and (getattr(ns, "bridge", False) or os.environ.get("SUBARU_USE_BRIDGE", "") == "1")
+    )
+    if use_bridge:
+        from subaru_bridge_client import run_bridge_command  # noqa: E402
+
+        payload = run_bridge_command(os.environ["SUBARU_BRIDGE_URL"], inner, args)
+        print_json(payload)
+        return 0 if payload.get("ok") else 1
     payload = run_command(inner, args, dry_run=ns.dry_run)
     print_json(payload)
     return 0 if payload.get("ok") else 1

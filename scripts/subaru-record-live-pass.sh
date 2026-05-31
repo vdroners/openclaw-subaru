@@ -20,6 +20,10 @@ gates=(
   "SUB-LIVE-LIGHTS:Lights + lights stop confirmed"
 )
 
+if [[ "${SUBARU_EV:-0}" == "1" ]]; then
+  gates+=("SUB-LIVE-CHARGE:EV charge start confirmed (EV only)")
+fi
+
 tmp="$(mktemp)"
 passed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 

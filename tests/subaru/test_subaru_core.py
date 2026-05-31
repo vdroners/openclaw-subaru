@@ -58,6 +58,16 @@ def test_dry_run_envelope_required_keys():
     assert payload["command"] == "status"
 
 
+def test_actuation_disabled_lock():
+    payload = run_command("lock", {}, dry_run=True)
+    assert payload.get("error_code") == "actuation_disabled"
+
+
+def test_auth_connect_dry():
+    payload = run_command("auth-connect", {}, dry_run=True)
+    assert payload.get("ok") is True
+
+
 def test_dry_run_all_read_commands():
     commands = [
         "status",
@@ -78,6 +88,10 @@ def test_dry_run_all_read_commands():
         "auth-check",
         "pin-test",
         "charge",
+        "auth-connect",
+        "presets-get",
+        "vehicles-select",
+        "config-set",
     ]
     for cmd in commands:
         payload = run_command(cmd, {}, dry_run=True)

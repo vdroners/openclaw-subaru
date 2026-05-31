@@ -24,6 +24,10 @@ fi
 
 CMD=( "$SUBARU_PYTHON" "${SCRIPT_DIR}/subaru_cli.py" )
 [[ "$DRY_RUN" -eq 1 ]] && CMD+=( --dry-run )
+if [[ -n "${SUBARU_BRIDGE_URL:-}" && "$DRY_RUN" -eq 0 ]] || [[ "$BRIDGE" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
+  CMD+=( --bridge )
+  export SUBARU_BRIDGE_URL="${SUBARU_BRIDGE_URL:-http://127.0.0.1:8790}"
+fi
 
 # Map shell-style multi-word commands to CLI subcommands
 case "$1" in
@@ -131,9 +135,8 @@ case "$1" in
     ;;
 esac
 
-if [[ "$BRIDGE" -eq 1 && -n "${SUBARU_BRIDGE_URL:-}" ]]; then
-  echo "SUBARU_ERR bridge mode not implemented in Phase 1" >&2
-  exit 1
+if [[ -n "${SUBARU_BRIDGE_URL:-}" && "$DRY_RUN" -eq 0 ]] || [[ "$BRIDGE" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
+  export SUBARU_BRIDGE_URL="${SUBARU_BRIDGE_URL:-http://127.0.0.1:8790}"
 fi
 
 out="$(mktemp)"

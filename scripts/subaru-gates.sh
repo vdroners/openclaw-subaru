@@ -64,14 +64,18 @@ else
   warn SUB-VENV "venv missing at ${SUBARU_VENV} (dry-run only)"
 fi
 
-_read_cmds=( status summary raw show capabilities health health-report condition maps-link fetch update locate presets-list presets-show vehicles-list auth-check pin-test charge )
+_read_cmds=( status summary raw show capabilities health health-report condition maps-link fetch update locate presets-list presets-show presets-get vehicles-list vehicles-select auth-check auth-connect pin-test config-set charge )
 for c in "${_read_cmds[@]}"; do
   case "$c" in
     presets-list) cli=( presets list ) ;;
     presets-show) cli=( presets show ) ;;
+    presets-get) cli=( presets get Default ) ;;
     vehicles-list) cli=( vehicles list ) ;;
+    vehicles-select) cli=( vehicles select "${SUBARU_VIN:-example-vin-dry-run}" ) ;;
     auth-check) cli=( auth check ) ;;
+    auth-connect) cli=( auth connect ) ;;
     pin-test) cli=( pin test ) ;;
+    config-set) cli=( config set fetch-interval 60 ) ;;
     *) cli=( "$c" ) ;;
   esac
   if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run "${cli[@]}" >/tmp/subaru-gate.out 2>&1; then
@@ -91,6 +95,35 @@ if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run start >/tmp/subaru-block.out
 else
   pass SUB-BLOCK-ACT "start rejected when actuation disabled"
 fi
+
+_block_fail=0
+for act_cmd in lock unlock stop horn lights charge; do
+  if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run "$act_cmd" >/tmp/subaru-block-all.out 2>&1; then
+    if grep -q actuation_disabled /tmp/subaru-block-all.out; then
+      pass SUB-BLOCK-ACT-ALL "$act_cmd blocked"
+    else
+      warn SUB-BLOCK-ACT-ALL "$act_cmd expected actuation_disabled"
+      _block_fail=1
+    fi
+  else
+    pass SUB-BLOCK-ACT-ALL "$act_cmd rejected"
+  fi
+done
+[[ "$_block_fail" -eq 1 ]] && fail SUB-BLOCK-ACT-ALL "one or more actuation cmds not blocked in dry-run"
+
+if bash "${SCRIPT_DIR}/subaru-dispatch-exec.sh" --dry-run "${MENTION} subaru status" >/tmp/subaru-dexec.out 2>&1; then
+  pass SUB-DISPATCH-EXEC-DRY "dispatch exec dry-run ok"
+else
+  fail SUB-DISPATCH-EXEC-DRY "$(tail -1 /tmp/subaru-dexec.out)"
+fi
+
+export SUBARU_MORNING_BRIEF=1
+if bash "${SCRIPT_DIR}/subaru-morning-line.sh" >/tmp/subaru-morning.out 2>&1; then
+  pass SUB-MORNING-DRY "morning line script ok"
+else
+  warn SUB-MORNING-DRY "morning line skipped or failed (SUBARU_ENABLED?)"
+fi
+unset SUBARU_MORNING_BRIEF
 
 if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run maps-link >/tmp/subaru-map-dry.out 2>&1; then
   url="$(_json_field /tmp/subaru-map-dry.out data.maps_url)"
@@ -127,17 +160,6 @@ else
   pass SUB-NOSECRETS "gate stdout clean"
 fi
 
-if [[ "${SUBARU_ACTUATION_ENABLED:-0}" == "1" ]]; then
-  pass_file="${OPENCLAW_DIR}/state/subaru-gates-live-pass.json"
-  if [[ -f "$pass_file" ]]; then
-    pass SUB-ACT-PASS-FILE "actuation pass file present"
-  else
-    fail SUB-ACT-PASS-FILE "SUBARU_ACTUATION_ENABLED=1 but missing $pass_file — run subaru-record-live-pass.sh"
-  fi
-else
-  warn SUB-ACT-PASS-FILE "actuation disabled — pass file not required"
-fi
-
 # Tier 1 live read gates (network, read-only)
 if bash "${SCRIPT_DIR}/subaru-vehicle.sh" auth check >/tmp/subaru-auth.out 2>&1; then
   reg="$(_json_field /tmp/subaru-auth.out data.device_registered)"
@@ -164,8 +186,12 @@ if bash "${SCRIPT_DIR}/subaru-vehicle.sh" capabilities >/tmp/subaru-cap.out 2>&1
   res="$(_json_field /tmp/subaru-cap.out data.res_status)"
   if [[ "$remote" == "True" || "$remote" == "true" ]] && [[ "$res" == "True" || "$res" == "true" ]]; then
     pass SUB-CAP "remote + RES available"
+    pass SUB-LEVEL1 "Level 1 remote + RES entitlements"
+    pass SUB-RES "remote engine start available"
   else
     warn SUB-CAP "trim may be Safety-only (remote=$remote res=$res)"
+    warn SUB-LEVEL1 "Level 1 entitlements incomplete"
+    warn SUB-RES "RES not available (remote=$remote res=$res)"
   fi
 else
   fail SUB-CAP "capabilities failed"
@@ -204,6 +230,15 @@ else
   fail SUB-PRESETS "presets list failed"
 fi
 
+default_preset="$(python3 -c "import json; print(json.load(open('${SUBARU_VEHICLE_JSON}')).get('remote_start_preset',''))" 2>/dev/null || true)"
+if [[ -n "$default_preset" ]]; then
+  if bash "${SCRIPT_DIR}/subaru-vehicle.sh" presets get "$default_preset" >/tmp/subaru-pget.out 2>&1 && _json_ok /tmp/subaru-pget.out; then
+    pass SUB-PRESET-GET "default preset retrievable"
+  else
+    warn SUB-PRESET-GET "presets get '$default_preset' failed"
+  fi
+fi
+
 if bash "${SCRIPT_DIR}/subaru-vehicle.sh" health-report --prefetch >/tmp/subaru-health.out 2>&1 && _json_ok /tmp/subaru-health.out; then
   score="$(_json_field /tmp/subaru-health.out data.score)"
   verdict="$(_json_field /tmp/subaru-health.out data.verdict)"
@@ -229,13 +264,80 @@ else
   warn SUB-EV-SKIP "not EV — charge/SOC gates skipped"
 fi
 
+if [[ "${SUBARU_ACTUATION_ENABLED:-0}" == "1" ]]; then
+  pass_file="${OPENCLAW_DIR}/state/subaru-gates-live-pass.json"
+  require_ev=0
+  [[ "$ev" == "True" || "$ev" == "true" ]] && require_ev=1
+  if [[ -f "$pass_file" ]]; then
+    pf="$(python3 - "$pass_file" "$require_ev" "${SCRIPT_DIR}/lib" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[3])
+from subaru_pass_file import validate_pass_file
+r = validate_pass_file(sys.argv[1], require_ev_charge=sys.argv[2] == "1")
+print("ok" if r["ok"] else "fail:" + ",".join(r["missing"]))
+PY
+)"
+    if [[ "$pf" == ok ]]; then
+      pass SUB-ACT-PASS-FILE "required Tier 3 gates true"
+    else
+      fail SUB-ACT-PASS-FILE "missing gates: ${pf#fail:}"
+    fi
+  else
+    fail SUB-ACT-PASS-FILE "SUBARU_ACTUATION_ENABLED=1 but missing $pass_file — run subaru-record-live-pass.sh"
+  fi
+else
+  warn SUB-ACT-PASS-FILE "actuation disabled — pass file not required"
+fi
+
 if bash "${SCRIPT_DIR}/subaru-vehicle.sh" pin test >/tmp/subaru-pin.out 2>&1 && _json_ok /tmp/subaru-pin.out; then
   pass SUB-PIN-LIVE "pin test ok"
 else
   warn SUB-PIN-LIVE "pin test failed (credentials/session?)"
 fi
 
+has_tpms="$(_json_field /tmp/subaru-cap.out data.has_tpms)"
+if [[ "$has_tpms" == "True" || "$has_tpms" == "true" ]]; then
+  tpms_ok=1
+  for tire in TYRE_PRESSURE_FRONT_LEFT TYRE_PRESSURE_FRONT_RIGHT TYRE_PRESSURE_REAR_LEFT TYRE_PRESSURE_REAR_RIGHT; do
+    val="$(_json_field /tmp/subaru-live-status.out data.vehicle_status.${tire})"
+    if [[ -z "$val" || "$val" == "0" ]]; then
+      tpms_ok=0
+    fi
+  done
+  if [[ "$tpms_ok" -eq 1 ]]; then
+    pass SUB-TPMS "four tire PSI present"
+  else
+    warn SUB-TPMS "missing TPMS values after status fetch"
+  fi
+else
+  warn SUB-TPMS "vehicle has no TPMS capability"
+fi
+
+if bash "${SCRIPT_DIR}/subaru-vehicle.sh" maps-link >/tmp/subaru-maps-live.out 2>&1 && _json_ok /tmp/subaru-maps-live.out; then
+  url="$(_json_field /tmp/subaru-maps-live.out data.maps_url)"
+  [[ "$url" == https://www.google.com/maps* ]] && pass SUB-MAPS-LIVE "maps link from cache" || warn SUB-MAPS-LIVE "maps url missing"
+else
+  warn SUB-MAPS-LIVE "maps-link failed"
+fi
+
+audit_log="${OPENCLAW_DIR}/state/subaru-command-log.jsonl"
+if [[ -f "$audit_log" ]]; then
+  if grep -Ei '(password|pin|Bearer)' "$audit_log" 2>/dev/null | grep -qv 'actuation_disabled'; then
+    fail SUB-CMD-LOG "possible secret in audit log"
+  else
+    pass SUB-CMD-LOG "audit log clean"
+  fi
+else
+  warn SUB-AUDIT "no audit log yet (run a live command first)"
+fi
+
 if [[ "$LIVE" -eq 1 ]]; then
+  if bash "${SCRIPT_DIR}/subaru-vehicle.sh" auth connect >/tmp/subaru-auth-conn.out 2>&1 && _json_ok /tmp/subaru-auth-conn.out; then
+    pass SUB-AUTH-CONNECT "auth connect ok"
+  else
+    warn SUB-AUTH-CONNECT "auth connect failed"
+  fi
+
   if bash "${SCRIPT_DIR}/subaru-vehicle.sh" locate >/tmp/subaru-locate.out 2>&1 && _json_ok /tmp/subaru-locate.out; then
     lat="$(_json_field /tmp/subaru-locate.out data.lat)"
     lon="$(_json_field /tmp/subaru-locate.out data.lon)"

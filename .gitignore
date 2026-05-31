@@ -9,3 +9,6 @@ __pycache__/
 *.pyc
 .DS_Store
 node_modules/
+docs/WhatsApp*.jpeg
+docs/WhatsApp*.jpg
+docs/operator-setup/

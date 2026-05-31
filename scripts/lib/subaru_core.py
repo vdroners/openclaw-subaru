@@ -493,6 +493,58 @@ class SubaruRunner:
                 settings=self.settings,
                 data={"vehicles": [{"vin": self.settings.vin or base.get("vin"), "name": self.settings.nickname}]},
             )
+        if command == "auth-connect":
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                data={"connected": True},
+            )
+        if command == "vehicles-select":
+            vin = str(args.get("vin") or self.settings.vin)
+            return make_response(ok=True, command=command, settings=self.settings, data={"vin": vin})
+        if command == "config-set":
+            key = str(args.get("key") or "fetch-interval")
+            val = int(args.get("value") or 60)
+            return make_response(ok=True, command=command, settings=self.settings, data={key: val})
+        if command == "presets-get":
+            name = str(args.get("name") or self.settings.default_preset or "Default")
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                data={"preset": {"name": name, "temp_f": 72}},
+            )
+        if command in ("presets-default", "presets-delete", "presets-add"):
+            if not self.settings.actuation_enabled and os.environ.get("SUBARU_DRY_RUN") != "force-actuation":
+                return make_response(
+                    ok=False,
+                    command=command,
+                    settings=self.settings,
+                    errors=["actuation_disabled"],
+                    error_code="actuation_disabled",
+                )
+            if command == "presets-default":
+                name = str(args.get("name") or "Default")
+                return make_response(
+                    ok=True,
+                    command=command,
+                    settings=self.settings,
+                    data={"remote_start_preset": name},
+                )
+            if command == "presets-delete":
+                return make_response(
+                    ok=True,
+                    command=command,
+                    settings=self.settings,
+                    data={"deleted": str(args.get("name") or "Old")},
+                )
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                data={"added": "DryPreset"},
+            )
         return make_response(
             ok=True,
             command=command,
