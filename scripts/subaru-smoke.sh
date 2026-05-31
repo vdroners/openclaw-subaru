@@ -71,7 +71,6 @@ _cmds=(
   "fetch"
   "update"
   "locate"
-  "charge"
 )
 for c in "${_cmds[@]}"; do
   _run_dry "$c" "$c" || true
@@ -83,17 +82,7 @@ _run_dry "vehicles-list" vehicles list || true
 _run_dry "auth-check" auth check || true
 _run_dry "pin-test" pin test || true
 
-if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run start >/tmp/subaru-smoke-start.json 2>/dev/null; then
-  if python3 -c "import json; p=json.load(open('/tmp/subaru-smoke-start.json')); exit(0 if p.get('error_code')=='actuation_disabled' else 1)"; then
-    pass "start blocked with actuation_disabled"
-  else
-    fail "start dry-run should return actuation_disabled"
-  fi
-else
-  pass "start rejected when actuation disabled"
-fi
-
-for act_cmd in lock unlock stop horn lights; do
+for act_cmd in lock unlock stop horn lights charge; do
   if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run "$act_cmd" >/tmp/subaru-smoke-act.json 2>&1; then
     if python3 -c "import json; p=json.load(open('/tmp/subaru-smoke-act.json')); exit(0 if p.get('error_code')=='actuation_disabled' else 1)"; then
       pass "$act_cmd actuation_disabled"
@@ -104,6 +93,16 @@ for act_cmd in lock unlock stop horn lights; do
     pass "$act_cmd rejected when actuation disabled"
   fi
 done
+
+if bash "${SCRIPT_DIR}/subaru-vehicle.sh" --dry-run start >/tmp/subaru-smoke-start.json 2>/dev/null; then
+  if python3 -c "import json; p=json.load(open('/tmp/subaru-smoke-start.json')); exit(0 if p.get('error_code')=='actuation_disabled' else 1)"; then
+    pass "start blocked with actuation_disabled"
+  else
+    fail "start dry-run should return actuation_disabled"
+  fi
+else
+  pass "start rejected when actuation disabled"
+fi
 
 _extra_dry=(
   "auth-connect:auth connect"

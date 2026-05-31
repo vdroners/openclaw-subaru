@@ -43,11 +43,20 @@ def test_exception_mapping_matrix():
         "PINLockoutProtect": "pin_lockout",
         "VehicleNotSupported": "unsupported",
         "RemoteServiceFailure": "remote_failed",
+        "DeviceNotAuthenticated": "device_not_authenticated",
+        "AccountLocked": "account_locked",
         "SubaruException": "subaru_api",
     }
     for name, code in cases.items():
         exc = type(name, (Exception,), {})()
         assert exception_to_error_code(exc) == code
+
+
+def test_subarulink_message_codes():
+    from subaru_health import subarulink_error_code_from_message
+
+    assert subarulink_error_code_from_message("accountLocked") == "account_locked"
+    assert subarulink_error_code_from_message("DEVICE_NOT_AUTHENTICATED") == "device_not_authenticated"
 
 
 def test_fuel_low_warn():

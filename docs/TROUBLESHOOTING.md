@@ -4,8 +4,9 @@
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `auth_invalid` / SUB-AUTH fail | Expired session or wrong password | Re-run `subarulink -i -c ~/.subarulink.cfg` or `subaru-auth-bootstrap.sh` |
-| SUB-2FA WARN | Device not registered | Complete 2FA in MySubaru app; run auth bootstrap |
+| `auth_invalid` / SUB-AUTH fail | Expired session or wrong password | Update `~/.openclaw/.env.d/subaru-password` after a MySubaru password change; verify with `subaru-vehicle.sh auth check` |
+| `account_locked` / `accountLocked` | Too many failed logins or 2FA attempts | Wait 30–60 minutes; **do not** loop `request_auth_code` or IMAP auto-submit |
+| SUB-2FA WARN / `device_not_authenticated` | Device not registered on this host | **One** registration: `bash ~/.openclaw/scripts/subaru-device-register.sh --request` (same session for request + submit) |
 | `auth_incomplete` | Missing username/password/PIN files | Check `SUBARU_*_FILE` paths and mode 600 |
 
 ## PIN

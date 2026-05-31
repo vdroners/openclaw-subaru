@@ -46,8 +46,24 @@ echo "Next steps:"
 echo "  1. Edit ${OPENCLAW_DIR}/.env (SUBARU_USERNAME, SUBARU_VIN)"
 echo "  2. Write password to ${OPENCLAW_DIR}/.env.d/subaru-password"
 echo "  3. Write PIN to ${OPENCLAW_DIR}/.env.d/subaru-pin"
+if [[ -f "${OPENCLAW_DIR}/config/subaru-vehicle.json" ]]; then
+  if ! python3 -c "import json; d=json.load(open('${OPENCLAW_DIR}/config/subaru-vehicle.json')); exit(0 if d.get('device_id') else 1)" 2>/dev/null; then
+    did="$(python3 -c 'import random; print(random.randint(100000000, 2147483647))')"
+    python3 - <<PY
+import json
+from pathlib import Path
+p = Path("${OPENCLAW_DIR}/config/subaru-vehicle.json")
+data = json.loads(p.read_text())
+if not data.get("device_id") or int(data.get("device_id") or 0) < 100000000:
+    data["device_id"] = int("${did}")
+    p.write_text(json.dumps(data, indent=2) + "\\n")
+    print(f"Set stable device_id={data['device_id']} in subaru-vehicle.json")
+PY
+  fi
+fi
 echo "  4. python3 -m venv ${OPENCLAW_DIR}/venv-subaru && pip install -r ${ROOT}/requirements.txt"
 echo "  5. bash ${SCRIPT_DIR}/install-to-openclaw.sh --force"
-echo "  6. bash ${SCRIPT_DIR}/subaru-auth-bootstrap.sh"
-echo "  7. make -C ${ROOT} gates"
-echo "  8. bash ${SCRIPT_DIR}/subaru-gates.sh --check --live"
+echo "  6. bash ${SCRIPT_DIR}/subaru-device-register.sh --request   # ONE attempt after unlock"
+echo "  7. bash ${SCRIPT_DIR}/subaru-vehicle.sh auth check"
+echo "  8. make -C ${ROOT} gates"
+echo "  9. bash ${SCRIPT_DIR}/subaru-gates.sh --check --live"

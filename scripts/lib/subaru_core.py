@@ -261,8 +261,14 @@ class SubaruRunner:
             self.settings.device_name,
             country=country,
         )
-        if not await self._ctrl.connect():
-            raise RuntimeError("auth_invalid")
+        try:
+            await self._ctrl.connect()
+        except Exception as exc:
+            code = exception_to_error_code(exc)
+            msg = str(exc) or code
+            raise RuntimeError(code if code != "subaru_api" else msg) from exc
+        if not self._ctrl.device_registered and not self._ctrl.get_vehicles():
+            raise RuntimeError("device_not_authenticated")
         return self._ctrl
 
     async def _close(self) -> None:
@@ -289,7 +295,7 @@ class SubaruRunner:
             "vehicle_name": ctrl.vin_to_name(vin),
             "subscription_features": list(data.get("subscription_features") or []),
             "vehicle_features": list(data.get("vehicle_features") or []),
-            "device_registered": ctrl.device_registered(),
+            "device_registered": ctrl.device_registered,
             "pin_required": ctrl.is_pin_required(),
         }
 
@@ -364,8 +370,26 @@ class SubaruRunner:
             return resp
         except RuntimeError as exc:
             msg = str(exc)
-            code = msg if msg in ("rate_limited", "auth_incomplete", "auth_invalid", "preset_missing") else "subaru_api"
-            return make_response(ok=False, command=command, settings=self.settings, errors=[msg], error_code=code)
+            known = (
+                "rate_limited",
+                "auth_incomplete",
+                "auth_invalid",
+                "preset_missing",
+                "pin_missing",
+                "device_not_authenticated",
+                "account_locked",
+            )
+            code = msg if msg in known else "subaru_api"
+            detail = msg if code != msg or code == "subaru_api" else code
+            if code == "device_not_authenticated" and detail == code:
+                detail = "Device not registered — run subaru-device-register.sh once"
+            return make_response(
+                ok=False,
+                command=command,
+                settings=self.settings,
+                errors=[detail],
+                error_code=code,
+            )
         except Exception as exc:
             code = exception_to_error_code(exc)
             return make_response(
@@ -435,6 +459,14 @@ class SubaruRunner:
                 data={"pin_valid": True},
             )
         if command == "charge":
+            if not self.settings.actuation_enabled and os.environ.get("SUBARU_DRY_RUN") != "force-actuation":
+                return make_response(
+                    ok=False,
+                    command=command,
+                    settings=self.settings,
+                    errors=["actuation_disabled"],
+                    error_code="actuation_disabled",
+                )
             caps_ev = dict(caps)
             if not caps_ev.get("ev"):
                 return make_response(
@@ -561,6 +593,40 @@ class SubaruRunner:
             if not vins:
                 raise RuntimeError("auth_invalid")
             vin = vins[0]
+
+        if command == "auth-check":
+            return make_response(
+                ok=True,
+                command=command,
+                settings=self.settings,
+                data={
+                    "device_registered": ctrl.device_registered,
+                    "session_configured": bool(self.settings.username and self.settings.password),
+                    "vehicles": ctrl.get_vehicles(),
+                    "contact_methods": dict(getattr(ctrl, "contact_methods", {}) or {}),
+                },
+            )
+
+        if command == "auth-connect":
+            return make_response(
+                ok=ctrl.device_registered or bool(ctrl.get_vehicles()),
+                command=command,
+                settings=self.settings,
+                data={"connected": bool(ctrl.get_vehicles()), "device_registered": ctrl.device_registered},
+            )
+
+        if command == "vehicles-list":
+            vehicles = [
+                {"vin": v, "name": ctrl.vin_to_name(v)} for v in ctrl.get_vehicles()
+            ]
+            return make_response(ok=True, command=command, settings=self.settings, data={"vehicles": vehicles})
+
+        if command == "pin-test":
+            if not self.settings.pin:
+                raise RuntimeError("pin_missing")
+            ok = await ctrl.test_pin()
+            return make_response(ok=bool(ok), command=command, settings=self.settings, data={"pin_valid": bool(ok)})
+
         caps = await self._capabilities_async(ctrl, vin)
 
         if command in ("status", "show", "summary", "health", "condition", "capabilities"):
@@ -742,12 +808,6 @@ class SubaruRunner:
             ok = await ctrl.update_user_climate_presets(vin, presets)
             return make_response(ok=bool(ok), command=command, settings=self.settings, data={"added": new_preset.get("name")})
 
-        if command == "vehicles-list":
-            vehicles = [
-                {"vin": v, "name": ctrl.vin_to_name(v)} for v in ctrl.get_vehicles()
-            ]
-            return make_response(ok=True, command=command, settings=self.settings, data={"vehicles": vehicles})
-
         if command == "vehicles-select":
             new_vin = str(args.get("vin") or "")
             cfg = dict(self.settings.vehicle_cfg)
@@ -755,26 +815,6 @@ class SubaruRunner:
             _save_vehicle_json(self.settings.vehicle_json_path, cfg)
             self.settings.vin = new_vin
             return make_response(ok=True, command=command, settings=self.settings, data={"vin": new_vin})
-
-        if command == "auth-check":
-            return make_response(
-                ok=True,
-                command=command,
-                settings=self.settings,
-                data={
-                    "device_registered": ctrl.device_registered(),
-                    "session_configured": bool(self.settings.username and self.settings.password),
-                    "vehicles": ctrl.get_vehicles(),
-                },
-            )
-
-        if command == "auth-connect":
-            ok = await ctrl.connect()
-            return make_response(ok=bool(ok), command=command, settings=self.settings, data={"connected": bool(ok)})
-
-        if command == "pin-test":
-            ok = await ctrl.test_pin()
-            return make_response(ok=bool(ok), command=command, settings=self.settings, data={"pin_valid": bool(ok)})
 
         if command == "config-set":
             key = str(args.get("key") or "")

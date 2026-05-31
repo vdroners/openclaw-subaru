@@ -19,15 +19,17 @@ fail() { echo "Gate $1: FAIL — $2" >&2; FAIL=1; }
 warn() { echo "Gate $1: WARN — $2"; }
 
 _json_ok() {
-  python3 -c "import json,sys; p=json.load(open(sys.argv[1])); sys.exit(0 if p.get('ok') else 1)" "$1" 2>/dev/null
+  python3 -c "import json,sys; raw=open(sys.argv[1]).read(); p=json.JSONDecoder().raw_decode(raw.lstrip())[0]; sys.exit(0 if p.get('ok') else 1)" "$1" 2>/dev/null
 }
 
 _json_field() {
   python3 - "$1" "$2" <<'PY'
 import json, sys
-p = json.load(open(sys.argv[1]))
+raw = open(sys.argv[1]).read()
+decoder = json.JSONDecoder()
+payload, _ = decoder.raw_decode(raw.lstrip())
 path = sys.argv[2].split(".")
-cur = p
+cur = payload
 for k in path:
     if isinstance(cur, dict) and k in cur:
         cur = cur[k]
@@ -64,7 +66,7 @@ else
   warn SUB-VENV "venv missing at ${SUBARU_VENV} (dry-run only)"
 fi
 
-_read_cmds=( status summary raw show capabilities health health-report condition maps-link fetch update locate presets-list presets-show presets-get vehicles-list vehicles-select auth-check auth-connect pin-test config-set charge )
+_read_cmds=( status summary raw show capabilities health health-report condition maps-link fetch update locate presets-list presets-show presets-get vehicles-list vehicles-select auth-check auth-connect pin-test config-set )
 for c in "${_read_cmds[@]}"; do
   case "$c" in
     presets-list) cli=( presets list ) ;;
@@ -111,6 +113,7 @@ for act_cmd in lock unlock stop horn lights charge; do
 done
 [[ "$_block_fail" -eq 1 ]] && fail SUB-BLOCK-ACT-ALL "one or more actuation cmds not blocked in dry-run"
 
+MENTION="${OPENCLAW_AGENT_MENTION:-@openclaw}"
 if bash "${SCRIPT_DIR}/subaru-dispatch-exec.sh" --dry-run "${MENTION} subaru status" >/tmp/subaru-dexec.out 2>&1; then
   pass SUB-DISPATCH-EXEC-DRY "dispatch exec dry-run ok"
 else
@@ -166,7 +169,7 @@ if bash "${SCRIPT_DIR}/subaru-vehicle.sh" auth check >/tmp/subaru-auth.out 2>&1;
   if [[ "$reg" == "True" || "$reg" == "true" || "$reg" == "1" ]]; then
     pass SUB-2FA "device registered"
   else
-    warn SUB-2FA "device not registered — run subaru-auth-bootstrap.sh"
+    warn SUB-2FA "device not registered — run subaru-device-register.sh --request (once)"
   fi
   pass SUB-AUTH "auth check ok"
 else

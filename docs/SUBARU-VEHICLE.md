@@ -121,6 +121,22 @@ make bridge-gates
 
 Set `SUBARU_BRIDGE_URL=http://127.0.0.1:8790` and optional `SUBARU_BRIDGE_KEY_FILE`. When the bridge URL is set, `subaru-vehicle.sh` passes `--bridge` to the CLI automatically.
 
+## Go-live checklist (Family Hub)
+
+1. Unlock MySubaru at [mysubaru.com](https://www.mysubaru.com) if the account is locked.
+2. Write secrets locally (mode **600**, never commit):
+   - `~/.openclaw/.env.d/subaru-password` — one line, permanent password
+   - `~/.openclaw/.env.d/subaru-pin` — one line, 4-digit MySubaru PIN
+3. Ensure `~/.openclaw/config/subaru-vehicle.json` has a **stable** `device_id` (not a Talk room token).
+4. Install scripts: `bash scripts/install-to-openclaw.sh --force` from your openclaw-subaru clone
+5. **One** 2FA registration (same session — do not loop):
+   ```bash
+   bash ~/.openclaw/scripts/subaru-device-register.sh --request
+   ```
+6. Verify: `bash ~/.openclaw/scripts/subaru-vehicle.sh auth check` → `device_registered: true`
+7. Patch `~/.openclaw/nc-webhook-relay.py` with the Subaru fast-path (see [templates/nc-webhook-relay-subaru-snippet.md](templates/nc-webhook-relay-subaru-snippet.md)); restart the relay.
+8. Family Hub test phrase: `@openclaw subaru status` (set `OPENCLAW_AGENT_MENTION` if your agent alias differs).
+
 ## Talk fast-path
 
 Parse-only: `subaru-dispatch.sh "@openclaw subaru status"`.

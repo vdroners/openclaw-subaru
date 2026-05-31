@@ -202,6 +202,22 @@ def evaluate_health(
     }
 
 
+def subarulink_error_code_from_message(message: str) -> str | None:
+    """Map Subaru API errorCode strings (e.g. accountLocked) to internal codes."""
+    if not message:
+        return None
+    key = message.strip().replace(" ", "").lower()
+    table = {
+        "accountlocked": "account_locked",
+        "invalidcredentials": "auth_invalid",
+        "invalidpin": "pin_invalid",
+        "devicenotauthenticated": "device_not_authenticated",
+        "device_not_authenticated": "device_not_authenticated",
+        "ratelimitexceeded": "rate_limited",
+    }
+    return table.get(key)
+
+
 def exception_to_error_code(exc: BaseException) -> str:
     name = type(exc).__name__
     mapping = {
@@ -211,6 +227,19 @@ def exception_to_error_code(exc: BaseException) -> str:
         "PINLockoutProtect": "pin_lockout",
         "VehicleNotSupported": "unsupported",
         "RemoteServiceFailure": "remote_failed",
+        "DeviceNotAuthenticated": "device_not_authenticated",
+        "AccountLocked": "account_locked",
         "SubaruException": "subaru_api",
     }
-    return mapping.get(name, "subaru_api")
+    if name in mapping:
+        return mapping[name]
+    msg = str(exc)
+    from_msg = subarulink_error_code_from_message(msg)
+    if from_msg:
+        return from_msg
+    lower = msg.lower()
+    if "accountlocked" in lower or "account locked" in lower:
+        return "account_locked"
+    if "device_not_authenticated" in lower or "device not authenticated" in lower:
+        return "device_not_authenticated"
+    return "subaru_api"

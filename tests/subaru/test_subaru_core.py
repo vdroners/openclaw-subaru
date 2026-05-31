@@ -63,6 +63,13 @@ def test_actuation_disabled_lock():
     assert payload.get("error_code") == "actuation_disabled"
 
 
+def test_auth_check_dry_device_registered():
+    payload = run_command("auth-check", {}, dry_run=True)
+    assert payload.get("ok") is True
+    data = payload.get("data") or {}
+    assert "device_registered" in data
+
+
 def test_auth_connect_dry():
     payload = run_command("auth-connect", {}, dry_run=True)
     assert payload.get("ok") is True
