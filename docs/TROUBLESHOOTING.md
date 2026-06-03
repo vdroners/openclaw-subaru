@@ -47,6 +47,10 @@
 | No alert posts | Set `SUBARU_ALERT_TALK_ROOM` or install openclaw-skylight for `talk-post.sh` |
 | CAP-SUB fail | Install shell cron: `make shell-cron`; verify `subaru-status-alert` timer |
 | SUB-CRON-DEDUP WARN | Normal if alert posted recently within min interval |
+| `Connection refused` in `journalctl -u talk-webhook-shim` | OpenClaw plugin webhook on **:8787** is down; Subaru fast-path on **:8788** still works. Start OpenClaw gateway/plugin or ignore if only using `@openclaw subaru …` |
+| `FLIGHT EVENT: openclaw gateway down` spam / shim tracebacks | Upgrade shim (drops system broadcasts); ensure `users/alfred` is in `OPENCLAW_ACTOR_IDS` |
+| Calendar/chore `@openclaw` messages get no reply | Same as :8787 down — non-Subaru Talk needs the OpenClaw upstream, not just the shim |
+| `fetch` shows `ok: false` in command log | Often benign if `status`/`condition` succeed; run `update` once; API may return false when cache is already fresh |
 
 ## Bridge (Phase 2)
 

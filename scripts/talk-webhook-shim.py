@@ -32,6 +32,7 @@ from subaru_talk_match import (  # noqa: E402
     is_noise_echo,
     is_overflow_echo,
     is_subaru_command,
+    is_talk_message_envelope,
     is_tool_json_payload,
     normalize_talk_text,
 )
@@ -87,11 +88,16 @@ def _parse_create_message(body: dict) -> tuple[str, str, str, str] | None:
     return room_token, text, actor_id, actor_name
 
 
-def _run_fast_path(script: str, text: str, room_token: str) -> bool:
+def _run_fast_path(
+    script: str, text: str, room_token: str, *, include_room_token: bool = True
+) -> bool:
     clean = extract_user_message(text)
+    cmd = ["bash", script, clean]
+    if include_room_token:
+        cmd.append(room_token)
     try:
         result = subprocess.run(
-            ["bash", script, clean, room_token],
+            cmd,
             capture_output=True,
             text=True,
             timeout=120,
@@ -120,6 +126,18 @@ def _post_talk(room_token: str, message: str) -> None:
     )
 
 
+def _is_openclaw_actor(actor_id: str, actor_name: str) -> bool:
+    actor_lc = (actor_id or "").lower()
+    actor_name_lc = (actor_name or "").lower()
+    if actor_lc in OPENCLAW_ACTOR_IDS or actor_lc == AGENT_NAME:
+        return True
+    if actor_lc.endswith(f"/{AGENT_NAME}") or actor_lc == f"users/{AGENT_NAME}":
+        return True
+    if actor_name_lc in {AGENT_NAME, "openclaw", "alfred"}:
+        return True
+    return False
+
+
 def _forward(raw: bytes, headers: dict[str, str]) -> tuple[int, bytes]:
     req = urllib.request.Request(UPSTREAM, data=raw, method="POST")
     skip = {"host", "content-length", "transfer-encoding", "connection"}
@@ -132,6 +150,10 @@ def _forward(raw: bytes, headers: dict[str, str]) -> tuple[int, bytes]:
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
+    except urllib.error.URLError as exc:
+        print(f"[shim] upstream unreachable {UPSTREAM}: {exc.reason}", file=sys.stderr)
+        body = json.dumps({"error": "upstream unreachable", "upstream": UPSTREAM}).encode()
+        return 502, body
 
 
 class ShimHandler(BaseHTTPRequestHandler):
@@ -171,6 +193,14 @@ class ShimHandler(BaseHTTPRequestHandler):
             actor_lc = actor_id.lower()
             actor_name_lc = actor_name.lower()
 
+            if is_talk_message_envelope(text):
+                text = extract_user_message(text)
+                print(
+                    f"[shim] unwrap talk envelope room={room_token} actor={actor_id} "
+                    f"text={text[:80]!r}",
+                    file=sys.stderr,
+                )
+
             if is_noise_echo(text):
                 print(
                     f"[shim] drop noise echo room={room_token} actor={actor_id} "
@@ -181,7 +211,7 @@ class ShimHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
-            if actor_lc in OPENCLAW_ACTOR_IDS or actor_lc == AGENT_NAME:
+            if _is_openclaw_actor(actor_id, actor_name):
                 print(
                     f"[shim] drop self-echo room={room_token} actor={actor_id}",
                     file=sys.stderr,
@@ -204,7 +234,9 @@ class ShimHandler(BaseHTTPRequestHandler):
                 "~/.openclaw/scripts/skylight-family-hub-dispatch.sh"
             )
             if _is_household_proposal(text) and os.path.isfile(household_dispatch):
-                if _run_fast_path(household_dispatch, text, room_token):
+                if _run_fast_path(
+                    household_dispatch, text, room_token, include_room_token=False
+                ):
                     self.send_response(200)
                     self.end_headers()
                     return

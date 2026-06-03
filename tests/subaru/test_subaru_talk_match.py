@@ -15,6 +15,7 @@ from subaru_talk_match import (  # noqa: E402
     is_noise_echo,
     is_overflow_echo,
     is_subaru_command,
+    is_talk_message_envelope,
     is_tool_json_payload,
     normalize_talk_text,
 )
@@ -24,15 +25,26 @@ def test_normalize_strips_mention_chip():
     assert normalize_talk_text("{mention-user1} Openclaw subaru status") == "Openclaw subaru status"
 
 
-def test_extract_user_message_from_tool_json():
+def test_extract_user_message_from_talk_envelope():
     raw = '{"message":"@openclaw subaru status","parameters":[]}'
     assert extract_user_message(raw) == "@openclaw subaru status"
-    assert is_tool_json_payload(raw)
+    assert is_talk_message_envelope(raw)
+    assert not is_tool_json_payload(raw)
+    assert not is_noise_echo(raw)
 
 
-def test_is_not_subaru_tool_json():
+def test_is_subaru_from_talk_envelope():
     raw = '{"message":"@openclaw subaru status","parameters":[]}'
-    assert not is_subaru_command(raw, "openclaw")
+    assert is_subaru_command(raw, "openclaw")
+
+
+def test_human_calendar_envelope_not_noise():
+    raw = (
+        '{"message":"Alfred can you change the phoebe concert start time to 615pm please",'
+        '"parameters":[]}'
+    )
+    assert is_talk_message_envelope(raw)
+    assert not is_noise_echo(raw)
 
 
 def test_is_subaru_with_mention_chip_only():
@@ -57,9 +69,9 @@ def test_overflow_echo_detection():
     assert is_noise_echo("SUBARU_ERR command failed")
 
 
-def test_parse_dispatch_from_tool_json_message_field():
+def test_parse_dispatch_from_talk_envelope():
     parsed = parse_dispatch('{"message":"@openclaw subaru status","parameters":[]}', "openclaw")
-    assert parsed is None  # tool JSON is not operator input
+    assert parsed == {"action": "status", "args": []}
     parsed = parse_dispatch("@openclaw subaru status", "openclaw")
     assert parsed == {"action": "status", "args": []}
 

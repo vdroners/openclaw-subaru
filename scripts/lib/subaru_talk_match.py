@@ -34,10 +34,28 @@ def extract_user_message(text: str) -> str:
     return normalize_talk_text(raw)
 
 
-def is_tool_json_payload(text: str) -> bool:
-    """OpenClaw / NC bot echo of a structured tool invocation — not operator input."""
+def is_talk_message_envelope(text: str) -> bool:
+    """Nextcloud Talk human input wrapper: {"message":"...","parameters":[]}."""
     raw = (text or "").strip()
     if not raw.startswith("{"):
+        return False
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(obj, dict):
+        return False
+    msg = obj.get("message")
+    params = obj.get("parameters")
+    return isinstance(msg, str) and bool(msg.strip()) and params == []
+
+
+def is_tool_json_payload(text: str) -> bool:
+    """OpenClaw bot echo of a structured tool invocation — not NC human envelopes."""
+    raw = (text or "").strip()
+    if not raw.startswith("{"):
+        return False
+    if is_talk_message_envelope(text):
         return False
     try:
         obj = json.loads(raw)
@@ -59,8 +77,6 @@ def extract_room_token(raw: str) -> str:
 
 
 def is_subaru_command(text: str, agent_name: str = "openclaw") -> bool:
-    if is_tool_json_payload(text):
-        return False
     norm = extract_user_message(text)
     if not norm:
         return False
