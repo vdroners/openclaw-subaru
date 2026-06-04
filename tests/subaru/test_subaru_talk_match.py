@@ -40,7 +40,7 @@ def test_is_subaru_from_talk_envelope():
 
 def test_human_calendar_envelope_not_noise():
     raw = (
-        '{"message":"Alfred can you change the phoebe concert start time to 615pm please",'
+        '{"message":"OpenClaw can you change the concert start time to 615pm please",'
         '"parameters":[]}'
     )
     assert is_talk_message_envelope(raw)

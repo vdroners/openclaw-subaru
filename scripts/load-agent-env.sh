@@ -17,3 +17,4 @@ if [[ -n "$preserve_mention" ]]; then
   export OPENCLAW_AGENT_MENTION="$preserve_mention"
 fi
 export OPENCLAW_AGENT_MENTION="${OPENCLAW_AGENT_MENTION:-@openclaw}"
+export OPENCLAW_AGENT_NAME="${OPENCLAW_AGENT_NAME:-${OPENCLAW_AGENT_MENTION#@}}"

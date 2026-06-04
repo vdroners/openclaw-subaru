@@ -16,6 +16,10 @@ source "${SCRIPT_DIR}/load-agent-env.sh" 2>/dev/null || true
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/load-subaru-env.sh"
 
+# Tell dispatch-exec it is serving a Talk reply: enables the richer summary
+# deck and staleness-gated refresh before reporting telemetry to the operator.
+export SUBARU_TALK_FASTPATH=1
+
 dispatch="${SCRIPT_DIR}/subaru-dispatch-exec.sh"
 formatter="${SCRIPT_DIR}/subaru-format-talk-reply.sh"
 talk_post="${HOME}/.openclaw/scripts/talk-post.sh"

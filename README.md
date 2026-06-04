@@ -64,6 +64,23 @@ Setup: [docs/templates/TALK-WEBHOOK-SHIM.md](docs/templates/TALK-WEBHOOK-SHIM.md
 
 Supported Talk phrases include `@openclaw subaru status`, `@openclaw subaru locate`, and `{mention-user1} subaru status` (NC mention chip).
 
+Talk status reads auto-refresh stale telemetry (`SUBARU_TALK_REFRESH_MAX_AGE_S`,
+default 300s) and coalesce repeated refreshes (`SUBARU_UPDATE_MIN_INTERVAL_S`) so
+MySubaru rate limits are respected. The shim binds loopback by default — set
+`TALK_SHIM_LAN=1` only if the NC bot lives on another host.
+
+---
+
+## Proactive automation
+
+| Feature | How |
+|---------|-----|
+| **Condition alerts** | `subaru-status-alert.sh` (cron) posts once when a door opens, the car is left unlocked, a window is down, fuel/range/tire crosses a threshold, or ignition is left on — deduped per condition |
+| **Scheduled remote start** | `subaru-scheduled-start.sh` (cron) — needs `SUBARU_SCHEDULED_START=1` + `SUBARU_ACTUATION_ENABLED=1`; optional `SUBARU_SCHEDULED_START_DAYS`/`_PRESET`/`_ROOM` |
+| **Weekly trip digest** | Morning brief records a daily odometer sample and appends `Driven last 7d: N mi` |
+| **Multi-vehicle** | `subaru <nickname> status` via `SUBARU_VEHICLE_ALIASES`, or `subaru-vehicle.sh --vin <VIN> ...` |
+| **Reverse geocode** | `SUBARU_GEOCODE=1` turns locate coordinates into a place name (cached, OSM Nominatim) |
+
 ---
 
 ## Gate matrix
@@ -88,7 +105,7 @@ openclaw-subaru/
 ├── scripts/                   # Bash + Python CLI + lib/ (symlinked to ~/.openclaw/scripts)
 ├── config/                    # Schemas + example vehicle JSON
 ├── docs/                      # Operator + gate docs + Talk shim templates
-├── tests/subaru/              # 50+ pytest cases (core, dispatch, talk, health, bridge)
+├── tests/subaru/              # 100+ pytest cases (core, dispatch, talk, health, bridge, conditions, trips, geocode)
 ├── compose/                   # Optional Docker bridge
 └── services/subaru-bridge/    # Loopback REST bridge (:8790)
 ```

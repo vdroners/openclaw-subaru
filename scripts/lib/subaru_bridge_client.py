@@ -16,7 +16,7 @@ READ_ROUTES = {
     "condition": ("GET", "/condition"),
     "health-report": ("GET", "/health-report"),
     "locate": ("GET", "/locate"),
-    "maps-link": ("GET", "/status"),
+    "maps-link": ("GET", "/maps-link"),
     "presets-list": ("GET", "/presets"),
     "fetch": ("POST", "/fetch"),
     "update": ("POST", "/update"),
@@ -46,15 +46,17 @@ def map_command_to_http(command: str, args: dict[str, Any] | None) -> tuple[str,
         cmd = "start"
     elif cmd == "remote_stop":
         cmd = "stop"
+    # A per-command VIN override (or any extra args) cannot ride on the dedicated
+    # GET read routes, so route through the generic /command endpoint that forwards
+    # args verbatim to subaru_core.
+    if args.get("vin") and cmd in READ_ROUTES:
+        return "POST", "/command", {"command": command, "args": args}
     if cmd in READ_ROUTES:
         method, path = READ_ROUTES[cmd]
         return method, path, None
     if cmd in ACTUATION_COMMANDS or cmd.startswith("presets-") or cmd.startswith("auth-") or cmd == "pin-test":
         body = {"command": command, "args": args}
         return "POST", "/command", body
-    if cmd in READ_ROUTES:
-        method, path = READ_ROUTES[cmd]
-        return method, path, None
     return "POST", "/command", {"command": command, "args": args}
 
 

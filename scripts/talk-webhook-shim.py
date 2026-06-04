@@ -37,7 +37,24 @@ from subaru_talk_match import (  # noqa: E402
     normalize_talk_text,
 )
 
-LISTEN_HOST = os.environ.get("TALK_SHIM_HOST", "0.0.0.0")
+def resolve_listen_host(env: dict[str, str] | None = None) -> str:
+    """Loopback by default; LAN exposure is opt-in.
+
+    Precedence: explicit ``TALK_SHIM_HOST`` wins, else ``TALK_SHIM_LAN=1`` binds
+    all interfaces (``0.0.0.0``), else loopback (``127.0.0.1``). The Talk shim
+    only needs to receive webhooks from the local NC bot/relay, so binding the
+    LAN by default needlessly exposed the upstream-forwarding surface.
+    """
+    env = env if env is not None else os.environ
+    explicit = (env.get("TALK_SHIM_HOST") or "").strip()
+    if explicit:
+        return explicit
+    if (env.get("TALK_SHIM_LAN") or "").strip() == "1":
+        return "0.0.0.0"
+    return "127.0.0.1"
+
+
+LISTEN_HOST = resolve_listen_host()
 LISTEN_PORT = int(os.environ.get("TALK_SHIM_PORT", "8788"))
 UPSTREAM = os.environ.get(
     "TALK_SHIM_UPSTREAM", "http://127.0.0.1:8787/nextcloud-talk-webhook"
@@ -51,10 +68,7 @@ FAMILY_HUB_ROOM = os.environ.get("SKYLIGHT_FAMILY_TALK_ROOM", "")
 _default_aliases = f"{AGENT_MENTION},{AGENT_MENTION.title()},{AGENT_NAME},openclaw"
 OPENCLAW_ACTOR_IDS = tuple(
     a.strip().lower()
-    for a in os.environ.get(
-        "OPENCLAW_ACTOR_IDS",
-        os.environ.get("ALFRED_ACTOR_IDS", _default_aliases),
-    ).split(",")
+    for a in os.environ.get("OPENCLAW_ACTOR_IDS", _default_aliases).split(",")
     if a.strip()
 )
 BOT_ACTOR_IDS = tuple(
@@ -133,7 +147,7 @@ def _is_openclaw_actor(actor_id: str, actor_name: str) -> bool:
         return True
     if actor_lc.endswith(f"/{AGENT_NAME}") or actor_lc == f"users/{AGENT_NAME}":
         return True
-    if actor_name_lc in {AGENT_NAME, "openclaw", "alfred"}:
+    if actor_name_lc in {AGENT_NAME, "openclaw"}:
         return True
     return False
 

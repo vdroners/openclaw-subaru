@@ -54,6 +54,17 @@ if bash "${SCRIPT_DIR}/subaru-dispatch.sh" "hello world" >/dev/null 2>&1; then
   FAIL=1
 fi
 
+# Talk fast-path renders bare "subaru status" via the richer summary deck.
+if SUBARU_TALK_FASTPATH=1 bash "${SCRIPT_DIR}/subaru-dispatch-exec.sh" --dry-run "${MENTION} subaru status" >/tmp/subaru-fastpath-map.out 2>/dev/null; then
+  if ! grep -q 'action=summary' /tmp/subaru-fastpath-map.out; then
+    echo "SUB-DISPATCH FAIL: fast-path status should map to summary" >&2
+    FAIL=1
+  fi
+else
+  echo "SUB-DISPATCH FAIL: fast-path dispatch-exec dry-run failed" >&2
+  FAIL=1
+fi
+
 if [[ "$FAIL" -eq 0 ]]; then
   echo "SUB-DISPATCH_TEST_OK phrases=${#phrases[@]}"
 fi

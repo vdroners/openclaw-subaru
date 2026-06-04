@@ -157,6 +157,48 @@ Talk alerts use `SUBARU_ALERT_TALK_ROOM` or `SKYLIGHT_OPS_TALK_ROOM` when [openc
 
 Alert dedup: `SUBARU_ALERT_MIN_INTERVAL_H` (default 6). Inspect with `subaru-status-alert.sh --would-post`.
 
+### Proactive condition alerts
+
+`subaru-status-alert.sh` also posts once when an actionable condition first
+appears — a door open, the car left unlocked, a window/sunroof down, fuel/range
+or tire pressure crossing a threshold, ignition left on, or a MIL. The active
+condition set is stored in `state/subaru-last-alert.json` (`conditions`) so a
+condition only re-alerts when it reappears (no per-poll spam).
+
+### Scheduled remote start
+
+`subaru-scheduled-start.sh` is a cron wrapper around `start --preset`. Cron drives
+the time; the wrapper enforces the gates and optionally filters by weekday:
+
+```bash
+# 06:50 on weekdays (in your crontab / systemd timer)
+SUBARU_SCHEDULED_START=1 SUBARU_ACTUATION_ENABLED=1 \
+SUBARU_SCHEDULED_START_PRESET="Winter" \
+SUBARU_SCHEDULED_START_DAYS="Mon Tue Wed Thu Fri" \
+bash ~/.openclaw/scripts/subaru-scheduled-start.sh
+```
+
+Run with `--dry-run` to see the gate decision without actuating.
+
+### Multi-vehicle
+
+Target a specific VIN per command with `subaru-vehicle.sh --vin <VIN> status`. In
+Talk, map spoken nicknames to VINs via `SUBARU_VEHICLE_ALIASES` (JSON) so
+`@openclaw subaru outback status` resolves automatically.
+
+### Trip digest + reverse geocode
+
+The morning brief records one odometer/fuel sample per day (`state/subaru-trips.jsonl`)
+and appends a rolling `Driven last 7d: N mi` digest. Set `SUBARU_GEOCODE=1` to turn
+locate coordinates into a cached place name in Talk replies (OSM Nominatim).
+
+### Talk read freshness + rate limits
+
+Talk status reads auto-refresh when telemetry is older than
+`SUBARU_TALK_REFRESH_MAX_AGE_S` (default 300s). `SUBARU_UPDATE_MIN_INTERVAL_S`
+coalesces repeated update/fetch attempts so a rate-limited refresh is not retried
+on every message; when serving cached data the reply leads with a stale notice.
+
 ## Troubleshooting
 
 See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for the full matrix.

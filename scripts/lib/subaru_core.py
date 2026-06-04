@@ -69,12 +69,49 @@ def _maps_url(lat: float | None, lon: float | None) -> str | None:
     return f"https://www.google.com/maps?q={lat},{lon}"
 
 
-def _redact_raw(raw: dict[str, Any]) -> dict[str, Any]:
-    text = json.dumps(_json_safe(raw))
-    for key in ("password", "pin", "token", "session"):
-        if key in text.lower():
-            pass
-    return _json_safe(raw)
+_REDACT_KEY_SUBSTRINGS = (
+    "password",
+    "passwd",
+    "pin",
+    "token",
+    "session",
+    "secret",
+    "auth",
+    "cookie",
+    "credential",
+    "apikey",
+    "api_key",
+    "access_key",
+    "refresh",
+)
+
+REDACTED = "***REDACTED***"
+
+
+def _redact_raw(raw: Any) -> Any:
+    """Recursively redact secret-bearing keys before a ``raw`` payload leaves the process.
+
+    The MySubaru ``get_raw_data`` blob can contain session tokens, auth cookies, and
+    PIN material. We redact by key name (case-insensitive substring match) at every
+    depth so the ``raw`` command is safe to surface over the CLI or the REST bridge.
+    """
+    safe = _json_safe(raw)
+    return _redact_value(safe)
+
+
+def _redact_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for k, v in value.items():
+            key_l = str(k).lower()
+            if any(sub in key_l for sub in _REDACT_KEY_SUBSTRINGS):
+                out[str(k)] = REDACTED
+            else:
+                out[str(k)] = _redact_value(v)
+        return out
+    if isinstance(value, list):
+        return [_redact_value(v) for v in value]
+    return value
 
 
 class Settings:
@@ -115,6 +152,14 @@ class Settings:
         self.maps_state = self.openclaw_dir / "state" / "subaru-last-location.json"
         self.audit_log = self.openclaw_dir / "state" / "subaru-command-log.jsonl"
         self.thresholds = self.vehicle_cfg.get("alert_thresholds") or {}
+        # Global update/fetch throttle (seconds). 0 disables it (CLI back-compat);
+        # the Talk staleness auto-refresh sets this so repeated polls coalesce
+        # instead of hammering the MySubaru update endpoint into a rate limit.
+        try:
+            self.update_min_interval_s = float(os.environ.get("SUBARU_UPDATE_MIN_INTERVAL_S", "0"))
+        except ValueError:
+            self.update_min_interval_s = 0.0
+        self.update_state = self.openclaw_dir / "state" / "subaru-update-last.json"
 
 
 def load_dry_fixture() -> dict[str, Any]:
@@ -243,6 +288,35 @@ class SubaruRunner:
         self.settings.locate_state.write_text(json.dumps(payload) + "\n", encoding="utf-8")
         if lat is not None and lon is not None:
             self.settings.maps_state.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    def _update_throttled(self, force: bool = False) -> bool:
+        """Return True when an update/fetch should be coalesced (served from cache).
+
+        Records the *attempt* timestamp on every non-throttled call (success or
+        failure) so a rate-limited MySubaru response does not let the next Talk
+        message immediately re-hammer the endpoint.
+        """
+        if self.settings.dry_run or force or self.settings.update_min_interval_s <= 0:
+            return False
+        state_path = self.settings.update_state
+        if state_path.is_file():
+            try:
+                last = json.loads(state_path.read_text(encoding="utf-8"))
+                ts = datetime.fromisoformat(str(last.get("timestamp")).replace("Z", "+00:00"))
+                elapsed = (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds()
+                if elapsed < self.settings.update_min_interval_s:
+                    return True
+            except (json.JSONDecodeError, ValueError, TypeError):
+                pass
+        return False
+
+    def _record_update_attempt(self) -> None:
+        if self.settings.dry_run or self.settings.update_min_interval_s <= 0:
+            return
+        self.settings.update_state.parent.mkdir(parents=True, exist_ok=True)
+        self.settings.update_state.write_text(
+            json.dumps({"timestamp": utc_now_iso()}) + "\n", encoding="utf-8"
+        )
 
     async def _get_controller(self):
         if self._ctrl is not None:
@@ -381,6 +455,7 @@ class SubaruRunner:
                 "pin_missing",
                 "device_not_authenticated",
                 "account_locked",
+                "unsupported",
             )
             code = msg if msg in known else "subaru_api"
             detail = msg if code != msg or code == "subaru_api" else code
@@ -683,6 +758,18 @@ class SubaruRunner:
             )
 
         if command == "fetch":
+            if self._update_throttled(force=bool(args.get("force"))):
+                data = await ctrl.get_data(vin)
+                bundle = self._status_bundle(ctrl, vin, data)
+                return make_response(
+                    ok=True,
+                    command=command,
+                    settings=self.settings,
+                    capabilities=caps,
+                    data={"refreshed": False, "throttled": True, **bundle},
+                    warnings=["fetch throttled — serving cached data (SUBARU_UPDATE_MIN_INTERVAL_S)"],
+                )
+            self._record_update_attempt()
             ok = await ctrl.fetch(vin)
             data = await ctrl.get_data(vin)
             bundle = self._status_bundle(ctrl, vin, data)
@@ -695,6 +782,18 @@ class SubaruRunner:
             )
 
         if command == "update":
+            if self._update_throttled(force=bool(args.get("force"))):
+                data = await ctrl.get_data(vin)
+                bundle = self._status_bundle(ctrl, vin, data)
+                return make_response(
+                    ok=True,
+                    command=command,
+                    settings=self.settings,
+                    capabilities=caps,
+                    data={"updated": False, "throttled": True, **bundle},
+                    warnings=["update throttled — serving cached data (SUBARU_UPDATE_MIN_INTERVAL_S)"],
+                )
+            self._record_update_attempt()
             ok = await ctrl.update(vin)
             data = await ctrl.get_data(vin)
             bundle = self._status_bundle(ctrl, vin, data)

@@ -36,7 +36,11 @@ KNOWN = frozenset(
 )
 
 
-def parse_dispatch(message: str, agent_name: str = "openclaw") -> dict | None:
+def parse_dispatch(
+    message: str,
+    agent_name: str = "openclaw",
+    vehicle_aliases: dict[str, str] | None = None,
+) -> dict | None:
     if not is_subaru_command(message, agent_name):
         return None
     norm = extract_user_message(message)
@@ -47,6 +51,15 @@ def parse_dispatch(message: str, agent_name: str = "openclaw") -> dict | None:
     if not rest:
         return {"action": "status", "args": []}
     parts = rest.split()
+    # Multi-vehicle: an optional leading nickname (e.g. "subaru outback status")
+    # is consumed when it maps to a configured VIN and is not itself a subcommand.
+    selected_vin = ""
+    aliases = {str(k).lower(): str(v) for k, v in (vehicle_aliases or {}).items()}
+    if parts and parts[0].lower() in aliases and parts[0].lower() not in KNOWN:
+        selected_vin = aliases[parts[0].lower()]
+        parts = parts[1:]
+    if not parts:
+        return {"action": "status", "args": (["--vin", selected_vin] if selected_vin else [])}
     sub = parts[0].lower()
     arg2 = parts[1] if len(parts) > 1 else ""
     arg3 = parts[2] if len(parts) > 2 else ""
@@ -65,13 +78,30 @@ def parse_dispatch(message: str, agent_name: str = "openclaw") -> dict | None:
         args = ["--door", arg2]
     elif action == "unlock" and arg2 and arg3:
         args = ["--door", arg3]
+    if selected_vin:
+        args = ["--vin", selected_vin] + args
     return {"action": action, "args": args}
 
 
+def _load_aliases(raw: str | None) -> dict[str, str]:
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    if isinstance(data, dict):
+        return {str(k): str(v) for k, v in data.items()}
+    return {}
+
+
 def main() -> int:
+    import os
+
     msg = sys.argv[1] if len(sys.argv) > 1 else ""
     agent = sys.argv[2] if len(sys.argv) > 2 else "openclaw"
-    parsed = parse_dispatch(msg, agent)
+    aliases = _load_aliases(os.environ.get("SUBARU_VEHICLE_ALIASES"))
+    parsed = parse_dispatch(msg, agent, aliases)
     if not parsed:
         return 1
     print(json.dumps(parsed))

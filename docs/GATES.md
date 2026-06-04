@@ -17,10 +17,22 @@ No credentials required.
 | S6 | Subaru-specific patterns covered by SUB-SCRUB | yes |
 | S7 | LICENSE, SECURITY, CONTRIBUTING, README | yes |
 | S8 | `cron-shell-direct.yaml` reference has no secrets | yes |
-| SUB-ERR-UNIT | `pytest tests/subaru` (32+ cases) | yes |
+| SUB-ERR-UNIT | `pytest tests/subaru` (100+ cases) | yes |
 | I3 | Temp install → `subaru-vehicle` skill under workspace | yes |
 | X-SUB | Example vehicle JSON validates | yes |
 | SUB-SMOKE | All R* commands dry-run + actuation block loop + schema envelope | yes |
+| SUB-RAW-REDACT | `raw` masks secret-bearing keys at every depth | yes |
+| SUB-BRIDGE-MAPS | `maps-link` → `/maps-link`; VIN reads route via `/command` | yes |
+| SUB-SHIM-BIND | Talk shim binds loopback by default; LAN only on opt-in | yes |
+| SUB-UPDATE-THROTTLE | update/fetch coalesces recent attempts within window | yes |
+| SUB-ALERT-TRANSITION | New condition posts once, repeats deduped | yes |
+| SUB-SCHED-START-DRY | Scheduled start dry-run blocks when actuation disabled | yes |
+| SUB-TRIPLOG | Weekly digest computes miles from sample window | yes |
+| SUB-VIN-ARG | Dispatch nickname → `--vin`; CLI `--vin` accepted | yes |
+| SUB-GEOCODE | Reverse geocode offline-safe (disabled → None) | yes |
+
+The feature gates above live in `scripts/subaru-feature-gates.sh` (also runnable
+standalone via `make feature-gates`).
 
 ## Tier 1 — `subaru-gates.sh --check`
 

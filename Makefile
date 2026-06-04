@@ -1,4 +1,4 @@
-.PHONY: install gates gates-bridge scrub publish smoke ai-gates shell-cron bridge-gates
+.PHONY: install gates gates-bridge scrub publish smoke ai-gates shell-cron bridge-gates feature-gates
 
 OPENCLAW_DIR ?= $(HOME)/.openclaw
 
@@ -19,6 +19,9 @@ publish:
 
 smoke:
 	bash scripts/subaru-smoke.sh
+
+feature-gates:
+	bash scripts/subaru-feature-gates.sh
 
 ai-gates:
 	bash scripts/openclaw-ai-gates.sh --check

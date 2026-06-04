@@ -48,9 +48,17 @@
 | CAP-SUB fail | Install shell cron: `make shell-cron`; verify `subaru-status-alert` timer |
 | SUB-CRON-DEDUP WARN | Normal if alert posted recently within min interval |
 | `Connection refused` in `journalctl -u talk-webhook-shim` | OpenClaw plugin webhook on **:8787** is down; Subaru fast-path on **:8788** still works. Start OpenClaw gateway/plugin or ignore if only using `@openclaw subaru …` |
-| `FLIGHT EVENT: openclaw gateway down` spam / shim tracebacks | Upgrade shim (drops system broadcasts); ensure `users/alfred` is in `OPENCLAW_ACTOR_IDS` |
+| `FLIGHT EVENT: openclaw gateway down` spam / shim tracebacks | Upgrade shim (drops system broadcasts); ensure the bot's actor id (e.g. `users/<bot>`) is in `OPENCLAW_ACTOR_IDS` |
 | Calendar/chore `@openclaw` messages get no reply | Same as :8787 down — non-Subaru Talk needs the OpenClaw upstream, not just the shim |
 | `fetch` shows `ok: false` in command log | Often benign if `status`/`condition` succeed; run `update` once; API may return false when cache is already fresh |
+| Family Hub status shows wrong odometer / range / ignition | Stale MySubaru cache. Talk `status` now auto-runs `update` when the cache is older than `SUBARU_TALK_REFRESH_MAX_AGE_S` (default 300s) and renders the richer `summary` deck. If MySubaru rate-limits the refresh, the reply leads with `(cached ~Nm old - could not refresh)` so old numbers are never shown as live |
+| Reply says `IGNITION_OFF` while driving | `VEHICLE_STATE_TYPE` reflects the last successful poll. Compare against the MySubaru app: if the app also shows OFF, telemetry was simply stale (now auto-refreshed); ignition state is a poll snapshot, not a live stream |
+| Talk refresh fires too often / hits update rate limits | Raise `SUBARU_TALK_REFRESH_MAX_AGE_S` (e.g. `900`); also set `SUBARU_UPDATE_MIN_INTERVAL_S` (e.g. `600`) so repeated auto-refreshes coalesce and a rate-limited update isn't retried on every poll |
+| Shim reachable from other LAN hosts unexpectedly | The shim now binds `127.0.0.1` by default. To expose it (NC bot on another host) set `TALK_SHIM_LAN=1` or `TALK_SHIM_HOST=0.0.0.0` |
+| Condition alert never fires for a door/unlock | `subaru-status-alert.sh` posts on the *transition*; confirm the cron runs and `SUBARU_ALERT_TALK_ROOM` is set. The condition signature is stored in `state/subaru-last-alert.json` (`conditions`) and only re-alerts when it reappears |
+| Scheduled start did nothing | Needs `SUBARU_SCHEDULED_START=1` AND `SUBARU_ACTUATION_ENABLED=1`; run `subaru-scheduled-start.sh --dry-run` to see the gate decision |
+| `subaru <nickname>` not recognized in Talk | Add the nickname→VIN map to `SUBARU_VEHICLE_ALIASES` (JSON) in `~/.openclaw/.env` |
+| Location shows coordinates, not a place name | Reverse geocoding is opt-in: set `SUBARU_GEOCODE=1` (uses OSM Nominatim, cached in `state/subaru-geocode-cache.json`) |
 
 ## Bridge (Phase 2)
 

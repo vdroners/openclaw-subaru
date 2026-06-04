@@ -20,7 +20,17 @@ services:
       SUBARU_ACTUATION_ENABLED: ${SUBARU_ACTUATION_ENABLED:-0}
       SUBARU_BRIDGE_API_KEY: ${SUBARU_BRIDGE_API_KEY:-}
       SUBARU_BRIDGE_KEY_FILE: ${SUBARU_BRIDGE_KEY_FILE:-/run/secrets/subaru-bridge-key}
+      # Point config + state at the mounted host tree so locate rate limiting,
+      # the update throttle, and the audit log persist and match the host CLI.
+      OPENCLAW_DIR: /root/.openclaw
+      SUBARU_VEHICLE_JSON: ${SUBARU_VEHICLE_JSON:-/root/.openclaw/config/subaru-vehicle.json}
+      SUBARU_UPDATE_MIN_INTERVAL_S: ${SUBARU_UPDATE_MIN_INTERVAL_S:-0}
     volumes:
       - ${OPENCLAW_DIR:-~/.openclaw}/.env.d:/run/secrets:ro
       - ${HOME}/.subarulink.cfg:/root/.subarulink.cfg:ro
+      # Vehicle config (VIN, presets, alert thresholds) read-only; shared state
+      # (locate/update timestamps, audit log) read-write so the bridge and host
+      # CLI do not diverge on rate limiting or auditing.
+      - ${OPENCLAW_DIR:-~/.openclaw}/config:/root/.openclaw/config:ro
+      - ${OPENCLAW_DIR:-~/.openclaw}/state:/root/.openclaw/state
     restart: unless-stopped

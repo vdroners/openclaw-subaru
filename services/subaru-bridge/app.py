@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import os
+import secrets
 import sys
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-REPO = Path(__file__).resolve().parents[2]
-LIB = REPO / "scripts" / "lib"
-sys.path.insert(0, str(LIB))
+# Resolve the lib dir robustly: prefer an explicit PYTHONPATH-style override, then
+# the repo-relative layout (host checkout), then the container layout (/app/scripts/lib).
+_HERE = Path(__file__).resolve()
+_CANDIDATES = [
+    _HERE.parents[2] / "scripts" / "lib",   # repo checkout: services/subaru-bridge/app.py
+    _HERE.parent / "scripts" / "lib",       # container: /app/app.py + /app/scripts/lib
+]
+for _lib in _CANDIDATES:
+    if _lib.is_dir():
+        sys.path.insert(0, str(_lib))
+        break
 
 from subaru_core import run_command  # noqa: E402
 
@@ -20,7 +29,7 @@ API_KEY = os.environ.get("SUBARU_BRIDGE_API_KEY", "")
 
 
 def _auth(x_api_key: str | None) -> None:
-    if API_KEY and x_api_key != API_KEY:
+    if API_KEY and not secrets.compare_digest(str(x_api_key or ""), API_KEY):
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
@@ -68,6 +77,12 @@ def condition(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -
 def locate(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> dict:
     _auth(x_api_key)
     return run_command("locate", {})
+
+
+@app.get("/maps-link")
+def maps_link(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> dict:
+    _auth(x_api_key)
+    return run_command("maps-link", {})
 
 
 @app.get("/presets")

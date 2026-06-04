@@ -42,6 +42,13 @@ ENV_KEYS=(
   SUBARU_MORNING_BRIEF
   SUBARU_BRIDGE_URL
   SUBARU_BRIDGE_KEY_FILE
+  SUBARU_UPDATE_MIN_INTERVAL_S
+  SUBARU_TALK_REFRESH_MAX_AGE_S
+  SUBARU_GEOCODE
+  SUBARU_VEHICLE_ALIASES
+  SUBARU_SCHEDULED_START
+  SUBARU_SCHEDULED_START_PRESET
+  TALK_SHIM_LAN
 )
 for v in "${ENV_KEYS[@]}"; do
   grep -q "^${v}=" .env.example 2>/dev/null || fail S3 "missing $v in .env.example"
@@ -111,6 +118,7 @@ rm -rf "$TMP_OPENCLAW"
 
 bash "${SCRIPT_DIR}/validate-subaru-vehicle.sh" "${ROOT}/config/subaru-vehicle.example.json" && pass X-SUB "subaru vehicle schema ok" || fail X-SUB "subaru vehicle schema failed"
 bash "${SCRIPT_DIR}/subaru-smoke.sh" && pass SUB-SMOKE "subaru smoke ok" || fail SUB-SMOKE "subaru smoke failed"
+bash "${SCRIPT_DIR}/subaru-feature-gates.sh" || FAIL=1
 
 echo ""
 echo "=== publish-gates summary (hard_fail=$FAIL) ==="

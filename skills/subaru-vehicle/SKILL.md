@@ -36,6 +36,10 @@ subaru-vehicle.sh maps-link
 subaru-vehicle.sh presets list
 ```
 
+Target a specific vehicle with `subaru-vehicle.sh --vin <VIN> status`, or in Talk
+say `@openclaw subaru <nickname> status` when `SUBARU_VEHICLE_ALIASES` maps the
+nickname to a VIN.
+
 ## Actuation (requires `SUBARU_ACTUATION_ENABLED=1` + PIN on disk)
 
 Confirm with the operator before Tier 3 commands (`unlock`, `start`).
@@ -62,6 +66,14 @@ bash ~/.openclaw/scripts/subaru-talk-fast-path.sh "<exact user message>" <room_t
 Parse-only: `subaru-dispatch.sh`. Dry-run exec: `subaru-dispatch-exec.sh --dry-run "…"`.
 
 Example mentions: `status`, `health-report`, `locate`, `start [preset]`, `lock`, `unlock driver`.
+
+## Proactive crons (optional)
+
+- `subaru-status-alert.sh` — posts once on a new actionable condition (door open,
+  unlocked, window down, low fuel/range/tire, ignition on) and dedupes repeats.
+- `subaru-scheduled-start.sh` — scheduled remote start; gated by
+  `SUBARU_SCHEDULED_START=1` + `SUBARU_ACTUATION_ENABLED=1`.
+- Morning brief appends a rolling `Driven last 7d: N mi` trip digest.
 
 ## Out of scope
 

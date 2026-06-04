@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="OpenClaw Subaru / MySubaru CLI")
     p.add_argument("--dry-run", action="store_true", help="No network; fixture responses")
     p.add_argument("--bridge", action="store_true", help="Route via SUBARU_BRIDGE_URL HTTP client")
+    p.add_argument("--vin", default=None, help="Target this VIN for one command (overrides configured VIN)")
     sub = p.add_subparsers(dest="command", required=True)
 
     for name in (
@@ -199,6 +200,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     inner, args = resolve_command(ns)
+    if getattr(ns, "vin", None):
+        args["vin"] = ns.vin
     use_bridge = (
         not ns.dry_run
         and os.environ.get("SUBARU_BRIDGE_URL")
