@@ -9,8 +9,9 @@ import re
 MENTION_CHIP_RE = re.compile(r"\{mention-user\d+\}", re.IGNORECASE)
 ROOM_TOKEN_RE = re.compile(r"/(?:call|chat)/([a-z0-9]+)(?:/|$)", re.IGNORECASE)
 _SUBARU_VERB_RE = re.compile(
-    r"(?i)\b(status|summary|locate|maps|maps-link|condition|capabilities|fetch|"
-    r"presets|lock|unlock|stop|horn|lights|charge|start|health-report|health)\b"
+    r"(?i)\b(status|summary|locate|location|where|parked|maps|maps-link|condition|"
+    r"capabilities|fetch|presets|lock(?:ed)?|unlock(?:ed)?|stop|horn|lights|charge|"
+    r"start|health-report|health|fuel|gas|range|doors?|tires?|tpms)\b"
 )
 
 
@@ -77,13 +78,32 @@ def extract_room_token(raw: str) -> str:
 
 
 def is_subaru_command(text: str, agent_name: str = "openclaw") -> bool:
+    """True when text should take the Subaru Talk fast-path.
+
+    Accepts:
+    - ``@alfred subaru status`` (canonical)
+    - mention-chip + subaru (``{mention-user1} subaru unlock``)
+    - ``@alfred … subaru …`` when a known verb is present (``is subaru locked``)
+    - bare ``subaru status`` / ``subaru unlock`` (Family Hub open-room style)
+    """
     norm = extract_user_message(text)
     if not norm:
         return False
-    agent_re = re.compile(rf"(?i)\b@?{re.escape(agent_name)}\s+subaru\b")
+    agent = agent_name.lstrip("@")
+    agent_re = re.compile(rf"(?i)\b@?{re.escape(agent)}\s+subaru\b")
     if agent_re.search(norm):
         return True
     if MENTION_CHIP_RE.search(text or "") and re.search(r"(?i)\bsubaru\b", norm):
+        return True
+    # @alfred … subaru … <verb>  (verb not required immediately after "subaru")
+    if re.search(rf"(?i)\b@?{re.escape(agent)}\b", norm) and re.search(
+        r"(?i)\bsubaru\b", norm
+    ) and _SUBARU_VERB_RE.search(norm):
+        return True
+    # Family Hub often omits @: "subaru status", "subaru unlock confirm"
+    if re.match(r"(?i)^subaru\b", norm) and (
+        _SUBARU_VERB_RE.search(norm) or len(norm.split()) == 1
+    ):
         return True
     return False
 
