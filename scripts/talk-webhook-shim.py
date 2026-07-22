@@ -36,6 +36,7 @@ from subaru_talk_match import (  # noqa: E402
     is_tool_json_payload,
     normalize_talk_text,
 )
+from talk_hooks_dispatch import dispatch_talk_to_gateway  # noqa: E402
 
 def resolve_listen_host(env: dict[str, str] | None = None) -> str:
     """Loopback by default; LAN exposure is opt-in.
@@ -64,7 +65,8 @@ if not UPSTREAM.endswith("/nextcloud-talk-webhook"):
 
 AGENT_MENTION = (os.environ.get("OPENCLAW_AGENT_MENTION", "@openclaw").strip() or "@openclaw")
 AGENT_NAME = (AGENT_MENTION.lstrip("@").lower() or "openclaw")
-FAMILY_HUB_ROOM = os.environ.get("SKYLIGHT_FAMILY_TALK_ROOM", "")
+FAMILY_HUB_ROOM = (os.environ.get("SKYLIGHT_FAMILY_TALK_ROOM") or "").strip()
+GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://127.0.0.1:18789")
 _default_aliases = f"{AGENT_MENTION},{AGENT_MENTION.title()},{AGENT_NAME},openclaw"
 OPENCLAW_ACTOR_IDS = tuple(
     a.strip().lower()
@@ -266,6 +268,26 @@ class ShimHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.end_headers()
                 return
+
+            if room_token == FAMILY_HUB_ROOM:
+                clean = normalize_talk_text(extract_user_message(text))
+                if clean and dispatch_talk_to_gateway(
+                    room_token=room_token,
+                    message=clean,
+                    actor_id=actor_id,
+                    origin="talk-webhook-shim/family-hub",
+                    family_hub_room=FAMILY_HUB_ROOM,
+                    gateway_url=GATEWAY_URL,
+                    log_prefix="[shim]",
+                ):
+                    self.send_response(200)
+                    self.end_headers()
+                    return
+                print(
+                    f"[shim] family hooks dispatch failed room={room_token}; "
+                    "falling back to plugin",
+                    file=sys.stderr,
+                )
 
         status, out = _forward(raw, dict(self.headers))
         self.send_response(status)

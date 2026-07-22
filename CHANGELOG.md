@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Shared Talk hooks dispatch helper (`scripts/lib/talk_hooks_dispatch.py`) used by
+  the webhook shim to wake OpenClaw via `/hooks/agent` (family vs main by room).
+- Integration tests for Talk shim fast-path + hooks dispatch room routing.
+
+### Changed
+
+- Family Hub room token is env-only (`SKYLIGHT_FAMILY_TALK_ROOM`); no hardcoded
+  default room id in the shim or hooks dispatch.
+- Talk mention examples and confirm prompts standardize on `@openclaw`.
+
 ## [1.1.0] - 2026-06-03
 
 Reliability + feature expansion on top of the public 1.0.0 base. All new behavior

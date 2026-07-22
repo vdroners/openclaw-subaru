@@ -81,9 +81,9 @@ def is_subaru_command(text: str, agent_name: str = "openclaw") -> bool:
     """True when text should take the Subaru Talk fast-path.
 
     Accepts:
-    - ``@alfred subaru status`` (canonical)
+    - ``@openclaw subaru status`` (canonical)
     - mention-chip + subaru (``{mention-user1} subaru unlock``)
-    - ``@alfred … subaru …`` when a known verb is present (``is subaru locked``)
+    - ``@openclaw … subaru …`` when a known verb is present (``is subaru locked``)
     - bare ``subaru status`` / ``subaru unlock`` (Family Hub open-room style)
     """
     norm = extract_user_message(text)
@@ -95,7 +95,7 @@ def is_subaru_command(text: str, agent_name: str = "openclaw") -> bool:
         return True
     if MENTION_CHIP_RE.search(text or "") and re.search(r"(?i)\bsubaru\b", norm):
         return True
-    # @alfred … subaru … <verb>  (verb not required immediately after "subaru")
+    # @openclaw … subaru … <verb>  (verb not required immediately after "subaru")
     if re.search(rf"(?i)\b@?{re.escape(agent)}\b", norm) and re.search(
         r"(?i)\bsubaru\b", norm
     ) and _SUBARU_VERB_RE.search(norm):
