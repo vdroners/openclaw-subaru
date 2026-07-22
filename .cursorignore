@@ -1,0 +1,17 @@
+
+**/build/
+**/coverage/
+# cursor/agent ignore
+**/dist/
+**/DJI_*/
+**/.git/
+**/*.jpg
+**/*.JPG
+**/.next/
+**/node_modules/
+**/playwright/.cache/
+**/__pycache__/
+**/test-results/
+**/tests/e2e/playwright-report/
+**/triage-runs/
+**/.venv/

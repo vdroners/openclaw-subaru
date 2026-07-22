@@ -138,6 +138,88 @@ assert reverse_geocode(None, None, enabled=True, fetcher=lambda a, b: "x") is No
 PY
 then pass SUB-GEOCODE "reverse geocode offline-safe"; else fail SUB-GEOCODE "geocode not offline-safe"; fi
 
+# SUB-ACT-PASS-RUNTIME: live actuation requires a valid pass file in subaru_core.
+if python3 - "$LIB" <<'PY'
+import sys, json, tempfile, os
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from subaru_core import Settings, SubaruRunner
+from subaru_pass_file import is_cleared_for_actuation
+tmp = tempfile.mkdtemp()
+state = Path(tmp) / "state"
+state.mkdir()
+os.environ["OPENCLAW_DIR"] = tmp
+os.environ["SUBARU_ACTUATION_ENABLED"] = "1"
+os.environ["SUBARU_PIN_FILE"] = ""
+os.environ["SUBARU_PIN"] = "1234"
+s = Settings(dry_run=False)
+s.openclaw_dir = Path(tmp)
+s.pin = "1234"
+s.actuation_enabled = True
+r = SubaruRunner(s)
+try:
+    r._ensure_actuation("lock")
+    raise SystemExit("expected actuation_not_cleared")
+except PermissionError as e:
+    assert str(e.args[0]) == "actuation_not_cleared", e
+(state / "subaru-gates-live-pass.json").write_text(json.dumps({
+    "passed_at": "2026-01-01T00:00:00Z",
+    "gates": {"SUB-LIVE-LOCK": True},
+}))
+assert is_cleared_for_actuation(state / "subaru-gates-live-pass.json")[0]
+r._ensure_actuation("lock")
+PY
+then pass SUB-ACT-PASS-RUNTIME "subaru_core enforces pass file"; else fail SUB-ACT-PASS-RUNTIME "pass file gate broken"; fi
+
+# SUB-TALK-CONFIRM: Talk actuation requires confirm token unless fastpath actuation on.
+out_no="$(env -i HOME="$HOME" PATH="$PATH" OPENCLAW_AGENT_MENTION=@openclaw \
+  SUBARU_TALK_FASTPATH=1 SUBARU_REQUIRE_TALK_CONFIRM=1 SUBARU_ACTUATION_ENABLED=1 SUBARU_FASTPATH_ACTUATION=0 \
+  bash "${SCRIPT_DIR}/subaru-dispatch-exec.sh" "@openclaw subaru lock" 2>/dev/null || true)"
+out_yes="$(env -i HOME="$HOME" PATH="$PATH" OPENCLAW_AGENT_MENTION=@openclaw \
+  SUBARU_TALK_FASTPATH=1 SUBARU_REQUIRE_TALK_CONFIRM=1 SUBARU_ACTUATION_ENABLED=1 SUBARU_FASTPATH_ACTUATION=0 \
+  bash "${SCRIPT_DIR}/subaru-dispatch-exec.sh" "@openclaw subaru lock confirm" 2>/dev/null || true)"
+if echo "$out_no" | grep -q actuation_confirm_required && ! echo "$out_yes" | grep -q actuation_confirm_required; then
+  pass SUB-TALK-CONFIRM "Talk actuation requires confirm token"
+else
+  fail SUB-TALK-CONFIRM "confirm gate wrong no=[$out_no] yes=[$out_yes]"
+fi
+
+# SUB-ALERT-ALL-CLEAR: cleared_conditions detects recovery transitions.
+if python3 - "$LIB" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from subaru_conditions import cleared_conditions, messages_for
+prev = ["H-DOOR|boot OPEN"]
+cur = []
+cleared = messages_for(cleared_conditions(prev, cur))
+assert cleared == ["boot OPEN"], cleared
+PY
+then pass SUB-ALERT-ALL-CLEAR "cleared condition detection works"; else fail SUB-ALERT-ALL-CLEAR "cleared logic wrong"; fi
+
+# SUB-FUEL-DIGEST: trip log fuel delta for morning brief.
+if python3 - "$LIB" <<'PY'
+import sys
+from datetime import datetime, timezone, timedelta
+sys.path.insert(0, sys.argv[1])
+from subaru_trips import fuel_digest
+now = datetime.now(timezone.utc)
+s = [{"ts": (now-timedelta(days=3)).isoformat(), "fuel_percent": 80},
+     {"ts": now.isoformat(), "fuel_percent": 65}]
+assert fuel_digest(s, now=now) == "Fuel used last 7d: ~15%"
+PY
+then pass SUB-FUEL-DIGEST "fuel digest correct"; else fail SUB-FUEL-DIGEST "fuel digest wrong"; fi
+
+# SUB-TALK-ALIAS: fuel/doors/tires map to condition/health-report.
+if python3 - "$LIB" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from subaru_dispatch_parse import parse_dispatch
+assert parse_dispatch("@openclaw subaru fuel", "openclaw")["action"] == "condition"
+assert parse_dispatch("@openclaw subaru doors", "openclaw")["action"] == "condition"
+assert parse_dispatch("@openclaw subaru tires", "openclaw")["action"] == "health-report"
+PY
+then pass SUB-TALK-ALIAS "Talk aliases map correctly"; else fail SUB-TALK-ALIAS "alias mapping wrong"; fi
+
 echo ""
 echo "=== subaru-feature-gates summary (hard_fail=$FAIL) ==="
 exit "$FAIL"

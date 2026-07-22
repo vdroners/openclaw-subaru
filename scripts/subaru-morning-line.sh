@@ -16,7 +16,7 @@ line="$(python3 - "$summary" "$TRIP_LOG" "${SCRIPT_DIR}/lib" <<'PY'
 import json, sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[3])
-from subaru_trips import parse_sample, append_sample, load_samples, weekly_digest
+from subaru_trips import parse_sample, append_sample, load_samples, weekly_digest, fuel_digest
 
 try:
     p = json.loads(sys.argv[1])
@@ -32,12 +32,16 @@ status = (data.get("vehicle_status") or {})
 try:
     append_sample(trip_log, parse_sample(status))
     digest = weekly_digest(load_samples(trip_log))
+    fuel_line = fuel_digest(load_samples(trip_log))
 except OSError:
     digest = None
+    fuel_line = None
 
 line = "Subaru: " + first
 if digest:
     line += " — " + digest
+if fuel_line:
+    line += " — " + fuel_line
 print(line)
 PY
 )" || line="Subaru: (unavailable)"

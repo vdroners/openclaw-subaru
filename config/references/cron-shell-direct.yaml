@@ -8,3 +8,10 @@ jobs:
     success_grep: SUBARU_ALERT
     schedule: "0 */6 * * *"
     tz: America/Los_Angeles
+  # Opt-in: set SUBARU_SCHEDULED_START=1 + preset/days in .env before enabling timer.
+  - id: c3d4e5f6-subaru-scheduled-start
+    name: subaru-scheduled-start
+    script: ${OPENCLAW_DIR}/scripts/subaru-scheduled-start.sh
+    success_grep: SUBARU_SCHED_START
+    schedule: "50 6 * * 1-5"
+    tz: America/Los_Angeles

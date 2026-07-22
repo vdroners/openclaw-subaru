@@ -20,19 +20,13 @@ def test_pass_file_requires_core_gates(tmp_path):
     assert "SUB-LIVE-START" in result["missing"]
 
 
-def test_pass_file_ok(tmp_path):
+def test_is_cleared_for_actuation(tmp_path):
+    from subaru_pass_file import is_cleared_for_actuation  # noqa: E402
+
+    assert is_cleared_for_actuation(tmp_path / "missing.json")[0] is False
     path = tmp_path / "pass.json"
     path.write_text(
-        json.dumps(
-            {
-                "gates": {
-                    "SUB-LIVE-LOCK": True,
-                    "SUB-LIVE-UNLOCK": True,
-                    "SUB-LIVE-START": True,
-                    "SUB-LIVE-STOP": True,
-                }
-            }
-        ),
+        json.dumps({"passed_at": "2026-01-01T00:00:00Z", "gates": {"SUB-LIVE-LOCK": True}}),
         encoding="utf-8",
     )
-    assert validate_pass_file(path)["ok"] is True
+    assert is_cleared_for_actuation(path)[0] is True

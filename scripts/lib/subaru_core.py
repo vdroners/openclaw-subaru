@@ -16,6 +16,7 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 from subaru_health import evaluate_health, exception_to_error_code  # noqa: E402
+from subaru_pass_file import is_cleared_for_actuation  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_STATUS = ROOT / "tests" / "subaru" / "fixtures" / "status_ok.json"
@@ -251,6 +252,11 @@ class SubaruRunner:
             raise PermissionError("actuation_disabled")
         if not self.settings.pin:
             raise PermissionError("pin_missing")
+        cleared, reason = is_cleared_for_actuation(
+            self.settings.openclaw_dir / "state" / "subaru-gates-live-pass.json"
+        )
+        if not cleared:
+            raise PermissionError("actuation_not_cleared")
 
     def _audit(self, command: str, ok: bool, error_code: str | None, tier: int) -> None:
         if self.settings.dry_run:

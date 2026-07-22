@@ -9,21 +9,26 @@ source "${SCRIPT_DIR}/load-subaru-env.sh"
 
 DRY_RUN=0
 BRIDGE=0
+VIN_ARG=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
     --bridge) BRIDGE=1; shift ;;
+    --vin) VIN_ARG=( --vin "$2" ); shift 2 ;;
     *) break ;;
   esac
 done
 
 if [[ $# -lt 1 ]]; then
-  echo "usage: subaru-vehicle.sh [--dry-run] <command> [args...]" >&2
+  echo "usage: subaru-vehicle.sh [--dry-run] [--vin VIN] <command> [args...]" >&2
   exit 2
 fi
 
 CMD=( "$SUBARU_PYTHON" "${SCRIPT_DIR}/subaru_cli.py" )
 [[ "$DRY_RUN" -eq 1 ]] && CMD+=( --dry-run )
+if [[ ${#VIN_ARG[@]} -gt 0 ]]; then
+  CMD+=( "${VIN_ARG[@]}" )
+fi
 if [[ -n "${SUBARU_BRIDGE_URL:-}" && "$DRY_RUN" -eq 0 ]] || [[ "$BRIDGE" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
   CMD+=( --bridge )
   export SUBARU_BRIDGE_URL="${SUBARU_BRIDGE_URL:-http://127.0.0.1:8790}"

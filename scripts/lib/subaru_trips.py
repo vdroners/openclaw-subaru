@@ -112,3 +112,18 @@ def weekly_digest(
     if miles <= 0:
         return None
     return f"Driven last {days}d: {miles:.0f} mi"
+
+
+def fuel_digest(
+    samples: list[dict[str, Any]], now: datetime | None = None, days: int = 7
+) -> str | None:
+    """Approximate fuel burned over the window from REMAINING_FUEL_PERCENT samples."""
+    now = now or utc_now()
+    window = _within(samples, now, days)
+    fuels = [float(s["fuel_percent"]) for s in window if s.get("fuel_percent") is not None]
+    if len(fuels) < 2:
+        return None
+    delta = max(fuels) - min(fuels)
+    if delta <= 0:
+        return None
+    return f"Fuel used last {days}d: ~{delta:.0f}%"

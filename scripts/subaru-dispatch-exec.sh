@@ -4,10 +4,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_SAVED_MENTION="${OPENCLAW_AGENT_MENTION:-}"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/load-subaru-env.sh"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/load-agent-env.sh" 2>/dev/null || true
+if [[ -n "$_SAVED_MENTION" ]]; then
+  export OPENCLAW_AGENT_MENTION="$_SAVED_MENTION"
+fi
 
 DRY=0
 [[ "${1:-}" == "--dry-run" ]] && DRY=1 && shift
@@ -49,6 +53,22 @@ print(json.dumps({
 }))
 PY
     exit 0
+  fi
+  # Talk fast-path: require explicit confirm unless SUBARU_FASTPATH_ACTUATION bypasses it.
+  if [[ "${SUBARU_TALK_FASTPATH:-0}" == "1" && "${SUBARU_REQUIRE_TALK_CONFIRM:-0}" == "1" && "${SUBARU_FASTPATH_ACTUATION:-0}" != "1" ]]; then
+    if ! printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])confirm($|[[:space:]])'; then
+      python3 - "$action" <<'PY'
+import json, sys
+action = sys.argv[1]
+print(json.dumps({
+    "ok": False,
+    "error_code": "actuation_confirm_required",
+    "errors": [f"Remote {action} from Talk requires 'confirm' (e.g. @openclaw subaru {action} confirm)."],
+    "nickname": "Subaru",
+}))
+PY
+      exit 0
+    fi
   fi
 fi
 

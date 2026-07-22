@@ -108,6 +108,23 @@ def _runner(tmp_path, *, ev=False, interval=0):
     settings.pin = "1234"
     settings.vin = "VIN123"
     settings.audit_log = tmp_path / "audit.jsonl"
+    settings.openclaw_dir = tmp_path
+    state = tmp_path / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "subaru-gates-live-pass.json").write_text(
+        json.dumps(
+            {
+                "passed_at": "2026-01-01T00:00:00Z",
+                "gates": {
+                    "SUB-LIVE-LOCK": True,
+                    "SUB-LIVE-UNLOCK": True,
+                    "SUB-LIVE-START": True,
+                    "SUB-LIVE-STOP": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     runner = SubaruRunner(settings)
     runner._ctrl = FakeController(ev=ev)
     return runner

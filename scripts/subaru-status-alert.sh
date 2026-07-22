@@ -97,15 +97,36 @@ fi
 cond="$(python3 - "$prev_sig" "$cur_sig" "${SCRIPT_DIR}/lib" <<'PY'
 import json, sys
 sys.path.insert(0, sys.argv[3])
-from subaru_conditions import should_post_conditions
+from subaru_conditions import should_post_conditions, cleared_conditions, messages_for
 prev = json.loads(sys.argv[1] or "[]")
 cur = json.loads(sys.argv[2] or "[]")
 ok, msgs, reason = should_post_conditions(prev, cur)
-print(json.dumps({"post": int(ok), "msgs": msgs, "reason": reason}))
+cleared = messages_for(cleared_conditions(prev, cur)) if prev else []
+print(json.dumps({"post": int(ok), "msgs": msgs, "reason": reason, "cleared": cleared}))
 PY
 )"
 cond_post="$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['post'])" "$cond" 2>/dev/null || echo 0)"
 cond_msgs="$(python3 -c "import json,sys; print('; '.join(json.loads(sys.argv[1])['msgs'][:5]))" "$cond" 2>/dev/null || echo '')"
+cond_cleared="$(python3 -c "import json,sys; print('; '.join(json.loads(sys.argv[1]).get('cleared',[])[:5]))" "$cond" 2>/dev/null || echo '')"
+
+# Optional recovery post when conditions clear (off by default).
+if [[ "${SUBARU_ALERT_ALL_CLEAR:-0}" == "1" && -n "$cond_cleared" && "$cond_post" != "1" ]]; then
+  if [[ "$WOULD_POST" -eq 1 ]]; then
+    echo "SUBARU_ALERT_WOULD_POST yes reason=all_clear"
+    exit 0
+  fi
+  ROOM="${SUBARU_ALERT_TALK_ROOM:-${SKYLIGHT_OPS_TALK_ROOM:-}}"
+  if [[ -n "$ROOM" ]]; then
+    msg="SUBARU ALL CLEAR: ${cond_cleared}"
+    TALK_POST="$(_resolve_talk_helper talk-post.sh)"
+    if [[ -n "$TALK_POST" ]]; then
+      SKYLIGHT_OPS_TALK_ROOM="$ROOM" bash "$TALK_POST" "$msg" >/dev/null 2>&1 || true
+    fi
+    _save_state "$verdict" "$score" "$cur_sig" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "SUBARU_ALERT_POSTED verdict=${verdict} score=${score} reason=all_clear"
+    exit 0
+  fi
+fi
 
 if [[ "$verdict" == "pass" && "$prev_verdict" == "pass" && "$cond_post" != "1" ]]; then
   echo "SUBARU_ALERT_OK quiet score=${score}"
