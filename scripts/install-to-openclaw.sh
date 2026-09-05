@@ -67,9 +67,20 @@ if [[ -d "${ROOT}/scripts/lib" ]]; then
   done
 fi
 
+# Canonical Talk shim lives in openclaw-skylight. Never overwrite a skylight
+# symlink/target with this repo's legacy copy (cp follows symlinks and can
+# clobber /media/4TB/openclaw-skylight/scripts/talk-webhook-shim.py).
 if [[ -f "${ROOT}/scripts/talk-webhook-shim.py" ]]; then
-  cp "${ROOT}/scripts/talk-webhook-shim.py" "${OPENCLAW_DIR}/talk-webhook-shim.py"
-  echo "install: copied talk-webhook-shim.py → ${OPENCLAW_DIR}/talk-webhook-shim.py"
+  dest="${OPENCLAW_DIR}/talk-webhook-shim.py"
+  if [[ -L "$dest" ]]; then
+    target="$(readlink -f "$dest" 2>/dev/null || true)"
+    echo "install: skip talk-webhook-shim.py (symlink → ${target:-?}; use openclaw-skylight)"
+  elif [[ -e "$dest" ]]; then
+    echo "install: skip talk-webhook-shim.py (exists; use openclaw-skylight as source of truth)"
+  else
+    ln -sf /media/4TB/openclaw-skylight/scripts/talk-webhook-shim.py "$dest"
+    echo "install: linked talk-webhook-shim.py → openclaw-skylight"
+  fi
 fi
 
 sync_skill "${ROOT}/skills/subaru-vehicle" "${OPENCLAW_DIR}/workspace/skills/subaru-vehicle"
