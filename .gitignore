@@ -13,3 +13,5 @@ node_modules/
 docs/WhatsApp*.jpeg
 docs/WhatsApp*.jpg
 docs/operator-setup/
+
+.vscode/
