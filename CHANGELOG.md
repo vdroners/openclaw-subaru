@@ -18,6 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   default room id in the shim or hooks dispatch.
 - Talk mention examples and confirm prompts standardize on `@openclaw`.
 
+### Fixed
+
+- The Talk shim dropped every human @mention as a tool-call echo:
+  `is_talk_message_envelope` required `parameters == []`, but Talk sends a
+  rich-object map (`{"mention-user1": {"type": "user", ...}}`) when the
+  message mentions someone. Rich-object maps now count as human input.
+
 ## [1.1.0] - 2026-06-03
 
 Reliability + feature expansion on top of the public 1.0.0 base. All new behavior

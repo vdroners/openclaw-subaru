@@ -47,6 +47,25 @@ def test_human_calendar_envelope_not_noise():
     assert not is_noise_echo(raw)
 
 
+def test_human_rich_mention_envelope_not_noise():
+    raw = (
+        '{"message":"{mention-user1} cleanup check: please just reply pong",'
+        '"parameters":{"mention-user1":{"type":"user","id":"alfred","name":"Alfred",'
+        '"mention-id":"alfred"}}}'
+    )
+    assert is_talk_message_envelope(raw)
+    assert not is_tool_json_payload(raw)
+    assert not is_noise_echo(raw)
+    assert extract_user_message(raw) == "cleanup check: please just reply pong"
+
+
+def test_tool_call_echo_with_message_is_still_noise():
+    raw = '{"message":"done","parameters":{"command":"ls -la","timeout":30}}'
+    assert not is_talk_message_envelope(raw)
+    assert is_tool_json_payload(raw)
+    assert is_noise_echo(raw)
+
+
 def test_is_subaru_with_mention_chip_only():
     assert is_subaru_command("{mention-user1} subaru status", "openclaw")
 

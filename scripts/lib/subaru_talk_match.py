@@ -35,8 +35,21 @@ def extract_user_message(text: str) -> str:
     return normalize_talk_text(raw)
 
 
+def _is_rich_object_map(params: object) -> bool:
+    """Talk rich-object parameters, e.g. {"mention-user1": {"type": "user", ...}}."""
+    return (
+        isinstance(params, dict)
+        and bool(params)
+        and all(isinstance(v, dict) and isinstance(v.get("type"), str) for v in params.values())
+    )
+
+
 def is_talk_message_envelope(text: str) -> bool:
-    """Nextcloud Talk human input wrapper: {"message":"...","parameters":[]}."""
+    """Nextcloud Talk human input wrapper: {"message":"...","parameters":[]}.
+
+    A message with an @-mention or attachment carries rich-object parameters
+    instead of ``[]``; that is still human input, not a tool-call echo.
+    """
     raw = (text or "").strip()
     if not raw.startswith("{"):
         return False
@@ -48,7 +61,7 @@ def is_talk_message_envelope(text: str) -> bool:
         return False
     msg = obj.get("message")
     params = obj.get("parameters")
-    return isinstance(msg, str) and bool(msg.strip()) and params == []
+    return isinstance(msg, str) and bool(msg.strip()) and (params == [] or _is_rich_object_map(params))
 
 
 def is_tool_json_payload(text: str) -> bool:
