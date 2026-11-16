@@ -7,7 +7,8 @@
 # Context (also read from env when the flag is absent):
 #   --sender      SUBARU_AUDIT_SENDER, else TALK_ACTOR_ID     (e.g. users/NCAdmin)
 #   --room        SUBARU_AUDIT_ROOM,   else TALK_ROOM         (Talk room token)
-#   --source      SUBARU_AUDIT_SOURCE  (default: talk when SUBARU_TALK_FASTPATH=1, else cli)
+#   --source      SUBARU_AUDIT_SOURCE  (default: talk when TALK_SOURCE is set or
+#                 SUBARU_TALK_FASTPATH=1, else cli; "talk-webhook-shim" logs as talk)
 #   --message-id  SUBARU_AUDIT_MESSAGE_ID, else TALK_MESSAGE_ID
 #   --verified    TALK_VERIFIED (webhook signature state from the shim)
 #   --allowed-room  or SUBARU_ENFORCE_ALLOWED_ROOM=1: actuation is refused unless
@@ -16,6 +17,9 @@
 #                 Fails closed: unset/empty token, empty room, or (source=talk)
 #                 a verified state other than "valid" all refuse. The token value
 #                 is never printed.
+# Confirm: a verified (TALK_VERIFIED=valid) message from the Family Hub room with
+# a known sender never needs the word "confirm" (Sarge, 16 Nov 2026). Calls from
+# the shim (TALK_SOURCE set + SUBARU_TALK_FASTPATH=1) always get the room check.
 # Every actuation attempt (refused, failed, ok) is appended to
 # $OPENCLAW_DIR/state/subaru-command-log.jsonl with sender/room/source/result.
 set -euo pipefail
@@ -30,7 +34,7 @@ if [[ -n "$_SAVED_MENTION" ]]; then
   export OPENCLAW_AGENT_MENTION="$_SAVED_MENTION"
 fi
 
-MENTION="${OPENCLAW_AGENT_MENTION:-@alfred}"
+MENTION="${OPENCLAW_AGENT_MENTION:-@openclaw}"
 AUDIT_PY="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/subaru_audit.py"
 
 DRY=0
@@ -55,8 +59,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if [[ -z "$A_SOURCE" ]]; then
-  if [[ "${SUBARU_TALK_FASTPATH:-0}" == "1" ]]; then A_SOURCE=talk; else A_SOURCE=cli; fi
+  if [[ -n "${TALK_SOURCE:-}" || "${SUBARU_TALK_FASTPATH:-0}" == "1" ]]; then A_SOURCE=talk; else A_SOURCE=cli; fi
 fi
+# The Talk webhook shim (talk-webhook-shim.py) exports TALK_SOURCE,
+# TALK_ROOM, TALK_ACTOR_ID, TALK_MESSAGE_ID and TALK_VERIFIED to every fast-path
+# child. A shim-originated call always gets the Family Hub room check.
+if [[ -n "${TALK_SOURCE:-}" && "${SUBARU_TALK_FASTPATH:-0}" == "1" ]]; then
+  ENFORCE_ROOM=1
+fi
+case "$A_SOURCE" in talk-webhook-shim|talk-shim|shim) A_SOURCE=talk ;; esac
 # Hand the context to the Python core (it stamps every audit row from env).
 export SUBARU_AUDIT_SENDER="$A_SENDER" SUBARU_AUDIT_ROOM="$A_ROOM" \
   SUBARU_AUDIT_SOURCE="$A_SOURCE" SUBARU_AUDIT_MESSAGE_ID="$A_MSGID"
@@ -130,8 +141,18 @@ if [[ "$is_actuation" -eq 1 ]]; then
       _refuse "$action" sender_missing "Car controls need to know who asked."
     fi
   fi
+  # Sarge (16 Nov 2026): no confirm step for anyone in Family Hub. A verified
+  # webhook from the Family Hub room acts right away; the word "confirm" is
+  # only still required for other Talk paths when SUBARU_REQUIRE_TALK_CONFIRM=1.
+  fh_room_var="${SUBARU_ALLOWED_ROOM_VAR:-SKYLIGHT_FAMILY_TALK_ROOM}"
+  fh_token=""
+  [[ "$fh_room_var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && fh_token="${!fh_room_var:-}"
+  fh_verified=0
+  if [[ "$A_VERIFIED" == "valid" && -n "$fh_token" && -n "$A_ROOM" && "$A_ROOM" == "$fh_token" && -n "$A_SENDER" ]]; then
+    fh_verified=1
+  fi
   # Talk fast-path: require explicit confirm unless SUBARU_FASTPATH_ACTUATION bypasses it.
-  if [[ "${SUBARU_TALK_FASTPATH:-0}" == "1" && "${SUBARU_REQUIRE_TALK_CONFIRM:-0}" == "1" && "${SUBARU_FASTPATH_ACTUATION:-0}" != "1" ]]; then
+  if [[ "$fh_verified" -ne 1 && "${SUBARU_TALK_FASTPATH:-0}" == "1" && "${SUBARU_REQUIRE_TALK_CONFIRM:-0}" == "1" && "${SUBARU_FASTPATH_ACTUATION:-0}" != "1" ]]; then
     if ! printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])confirm($|[[:space:]])'; then
       _refuse "$action" actuation_confirm_required "Remote ${action} from Talk requires 'confirm' (e.g. ${MENTION} subaru ${action} confirm)."
     fi

@@ -31,11 +31,11 @@ ROOM_TOKEN = "famhubtest1"
 @pytest.mark.parametrize(
     "msg,preset",
     [
-        ("@alfred subaru start Dan Da Dan", "Dan Da Dan"),
-        ("@alfred subaru start Dan Da Dan confirm", "Dan Da Dan"),
-        ('@alfred subaru start "Dan Da Dan"', "Dan Da Dan"),
-        ("@alfred subaru start 'dan da dan' confirm", "Dan Da Dan"),
-        ("@alfred subaru start \u201cDan Da Dan\u201d", "Dan Da Dan"),
+        ("@openclaw subaru start Dan Da Dan", "Dan Da Dan"),
+        ("@openclaw subaru start Dan Da Dan confirm", "Dan Da Dan"),
+        ('@openclaw subaru start "Dan Da Dan"', "Dan Da Dan"),
+        ("@openclaw subaru start 'dan da dan' confirm", "Dan Da Dan"),
+        ("@openclaw subaru start \u201cDan Da Dan\u201d", "Dan Da Dan"),
         ("subaru start with full heat", "Full Heat"),
         ("subaru start using preset Full Cool please", "Full Cool"),
         ("subaru start the car with Dan Da Dan", "Dan Da Dan"),
@@ -44,15 +44,15 @@ ROOM_TOKEN = "famhubtest1"
     ],
 )
 def test_multiword_preset(msg, preset):
-    parsed = parse_dispatch(msg, "alfred", known_presets=KNOWN)
+    parsed = parse_dispatch(msg, "openclaw", known_presets=KNOWN)
     assert parsed == {"action": "start", "args": ["--preset", preset]}
 
 
 @pytest.mark.parametrize(
-    "msg", ["subaru start", "subaru start confirm", "subaru start the car", "@alfred subaru start wolfram now"]
+    "msg", ["subaru start", "subaru start confirm", "subaru start the car", "@openclaw subaru start wolfram now"]
 )
 def test_start_without_preset_uses_default(msg):
-    parsed = parse_dispatch(msg, "alfred", known_presets=KNOWN)
+    parsed = parse_dispatch(msg, "openclaw", known_presets=KNOWN)
     assert parsed == {"action": "start", "args": []}
 
 
@@ -62,14 +62,14 @@ def test_parse_preset_never_returns_filler():
 
 
 def test_unlock_door_parse_unchanged():
-    assert parse_dispatch("subaru unlock driver", "alfred") == {"action": "unlock", "args": ["--door", "driver"]}
+    assert parse_dispatch("subaru unlock driver", "openclaw") == {"action": "unlock", "args": ["--door", "driver"]}
 
 
 def test_vehicle_json_default_preset_is_known(tmp_path, monkeypatch):
     vj = tmp_path / "vehicle.json"
     vj.write_text(json.dumps({"remote_start_preset": "Dan Da Dan"}), encoding="utf-8")
     monkeypatch.setenv("SUBARU_VEHICLE_JSON", str(vj))
-    assert parse_dispatch("subaru start dan da dan", "alfred") == {
+    assert parse_dispatch("subaru start dan da dan", "openclaw") == {
         "action": "start",
         "args": ["--preset", "Dan Da Dan"],
     }
@@ -162,7 +162,7 @@ def _exec(tmp_path: Path, *args: str, env_extra: dict | None = None) -> tuple[su
             "OPENCLAW_DIR": str(tmp_path),
             "SUBARU_ACTUATION_ENABLED": "1",
             "SKYLIGHT_FAMILY_TALK_ROOM": ROOM_TOKEN,
-            "OPENCLAW_AGENT_MENTION": "@alfred",
+            "OPENCLAW_AGENT_MENTION": "@familybot",
         }
     )
     env.update(env_extra or {})
@@ -249,11 +249,12 @@ def test_exec_actuation_disabled_is_audited(tmp_path):
 
 
 def test_exec_confirm_gate_text_uses_mention(tmp_path):
+    # Not a verified Family Hub call (no room / not verified): confirm still applies.
     env = {"SUBARU_TALK_FASTPATH": "1", "SUBARU_REQUIRE_TALK_CONFIRM": "1"}
-    proc, rows = _exec(tmp_path, *_fh(), "subaru start", env_extra=env)
+    proc, rows = _exec(tmp_path, "--sender", "users/x", "subaru start", env_extra=env)
     out = json.loads(proc.stdout)
     assert out["error_code"] == "actuation_confirm_required"
-    assert "@alfred subaru start confirm" in out["errors"][0]
+    assert "@familybot subaru start confirm" in out["errors"][0]
     assert "@openclaw" not in proc.stdout
     assert rows[-1]["rejected_reason"] == "actuation_confirm_required"
 
@@ -261,3 +262,48 @@ def test_exec_confirm_gate_text_uses_mention(tmp_path):
 def test_exec_unknown_option_is_usage_error(tmp_path):
     proc, _ = _exec(tmp_path, "--bogus", "subaru status")
     assert proc.returncode == 2
+
+
+# ---------------------------------------------------------------- Talk webhook shim env
+def _shim_env(room: str = ROOM_TOKEN, verified: str = "valid", actor: str = "users/kid") -> dict:
+    return {
+        "SUBARU_TALK_FASTPATH": "1",
+        "SUBARU_REQUIRE_TALK_CONFIRM": "1",
+        "TALK_SOURCE": "talk-webhook-shim",
+        "TALK_ROOM": room,
+        "TALK_ACTOR_ID": actor,
+        "TALK_MESSAGE_ID": "777",
+        "TALK_VERIFIED": verified,
+        "TALK_FAMILY_HUB": "1" if room == ROOM_TOKEN else "0",
+    }
+
+
+def test_shim_family_hub_start_needs_no_confirm(tmp_path):
+    proc, rows = _exec(tmp_path, "subaru start Dan Da Dan", env_extra=_shim_env())
+    assert "action=start" in proc.stdout and "Dan\\ Da\\ Dan" in proc.stdout
+    assert rows == []
+
+
+def test_shim_other_room_refused_even_with_confirm(tmp_path):
+    proc, rows = _exec(tmp_path, "subaru start confirm", env_extra=_shim_env(room="otherroom"))
+    assert json.loads(proc.stdout)["error_code"] == "room_not_allowed"
+    row = rows[-1]
+    assert row["source"] == "talk" and row["sender"] == "users/kid" and row["message_id"] == "777"
+    assert row["room"] == "otherroom"
+
+
+def test_shim_unverified_refused(tmp_path):
+    proc, rows = _exec(tmp_path, "subaru unlock confirm", env_extra=_shim_env(verified="unverified"))
+    assert json.loads(proc.stdout)["error_code"] == "talk_unverified"
+    assert rows[-1]["rejected_reason"] == "talk_unverified"
+
+
+def test_shim_reads_still_work_in_family_hub(tmp_path):
+    proc, _ = _exec(tmp_path, "subaru status", env_extra=_shim_env())
+    assert "action=summary" in proc.stdout
+
+
+def test_audit_source_maps_shim(monkeypatch):
+    monkeypatch.delenv("SUBARU_AUDIT_SOURCE", raising=False)
+    monkeypatch.setenv("TALK_SOURCE", "talk-webhook-shim")
+    assert audit_context()["source"] == "talk"

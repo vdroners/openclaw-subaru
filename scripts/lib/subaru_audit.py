@@ -7,7 +7,7 @@ explicit arguments or, failing that, the environment:
 
     SUBARU_AUDIT_SENDER     else TALK_ACTOR_ID
     SUBARU_AUDIT_ROOM       else TALK_ROOM
-    SUBARU_AUDIT_SOURCE     else "cli"
+    SUBARU_AUDIT_SOURCE     else "talk" when TALK_SOURCE is set (shim), else "cli"
     SUBARU_AUDIT_MESSAGE_ID else TALK_MESSAGE_ID
 
 Never writes secrets: no PIN, password, VIN or coordinates are accepted here.
@@ -45,7 +45,9 @@ def audit_context(
     message_id: str | None = None,
 ) -> dict[str, str]:
     env = os.environ
-    src = _clean(source or env.get("SUBARU_AUDIT_SOURCE") or "cli", 20).lower()
+    src = _clean(source or env.get("SUBARU_AUDIT_SOURCE") or ("talk" if env.get("TALK_SOURCE") else "cli"), 40).lower()
+    if src in ("talk-webhook-shim", "talk-shim", "shim"):
+        src = "talk"
     if src not in VALID_SOURCES:
         src = "cli"
     return {

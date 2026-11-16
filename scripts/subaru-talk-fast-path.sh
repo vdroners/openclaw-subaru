@@ -24,7 +24,7 @@ export SUBARU_TALK_FASTPATH=1
 # (TALK_ACTOR_ID, TALK_MESSAGE_ID, TALK_VERIFIED) when it provides them.
 export TALK_ROOM="${TALK_ROOM:-$ROOM}"
 export SUBARU_AUDIT_SOURCE="${SUBARU_AUDIT_SOURCE:-talk}"
-MENTION="${OPENCLAW_AGENT_MENTION:-@alfred}"
+MENTION="${OPENCLAW_AGENT_MENTION:-@openclaw}"
 
 dispatch="${SCRIPT_DIR}/subaru-dispatch-exec.sh"
 formatter="${SCRIPT_DIR}/subaru-format-talk-reply.sh"

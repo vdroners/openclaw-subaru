@@ -21,13 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   refuses actuation unless the room equals the token in the env var named by
   `SUBARU_ALLOWED_ROOM_VAR` (default `SKYLIGHT_FAMILY_TALK_ROOM`). Fails closed on a
   missing token, missing room, or unverified Talk webhook. The token is never printed.
+- Consumes the Talk shim's child env (`TALK_SOURCE`, `TALK_ROOM`, `TALK_ACTOR_ID`,
+  `TALK_MESSAGE_ID`, `TALK_VERIFIED`): shim calls always get the room check, and a
+  verified Family Hub message needs no `confirm` word (no confirm step for the house).
 - Shared Talk hooks dispatch helper (`scripts/lib/talk_hooks_dispatch.py`) used by
   the webhook shim to wake OpenClaw via `/hooks/agent` (family vs main by room).
 - Integration tests for Talk shim fast-path + hooks dispatch room routing.
 
 ### Changed
 
-- Talk replies say `${OPENCLAW_AGENT_MENTION}` (e.g. `@alfred`) instead of `@openclaw`.
+- Talk replies say `${OPENCLAW_AGENT_MENTION}` (the configured mention) instead of a hard-coded `@openclaw`.
 - `test_dispatch_exec_requires_talk_confirm` runs with a temp `OPENCLAW_DIR` so tests
   never read the live `.env` or write the live audit log.
 
