@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 # Execute Talk fast-path: parse dispatch JSON and run subaru-vehicle.sh
-# Usage: subaru-dispatch-exec.sh [--dry-run] "message"
+# Usage: subaru-dispatch-exec.sh [--dry-run] [--sender ID] [--room TOKEN]
+#          [--source talk|cli|agent|cron|router] [--message-id ID]
+#          [--verified valid|unverified|...] [--allowed-room] "message"
+#
+# Context (also read from env when the flag is absent):
+#   --sender      SUBARU_AUDIT_SENDER, else TALK_ACTOR_ID     (e.g. users/NCAdmin)
+#   --room        SUBARU_AUDIT_ROOM,   else TALK_ROOM         (Talk room token)
+#   --source      SUBARU_AUDIT_SOURCE  (default: talk when SUBARU_TALK_FASTPATH=1, else cli)
+#   --message-id  SUBARU_AUDIT_MESSAGE_ID, else TALK_MESSAGE_ID
+#   --verified    TALK_VERIFIED (webhook signature state from the shim)
+#   --allowed-room  or SUBARU_ENFORCE_ALLOWED_ROOM=1: actuation is refused unless
+#                 the room equals the token held in the env var NAMED by
+#                 SUBARU_ALLOWED_ROOM_VAR (default SKYLIGHT_FAMILY_TALK_ROOM).
+#                 Fails closed: unset/empty token, empty room, or (source=talk)
+#                 a verified state other than "valid" all refuse. The token value
+#                 is never printed.
+# Every actuation attempt (refused, failed, ok) is appended to
+# $OPENCLAW_DIR/state/subaru-command-log.jsonl with sender/room/source/result.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,14 +30,62 @@ if [[ -n "$_SAVED_MENTION" ]]; then
   export OPENCLAW_AGENT_MENTION="$_SAVED_MENTION"
 fi
 
+MENTION="${OPENCLAW_AGENT_MENTION:-@alfred}"
+AUDIT_PY="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/subaru_audit.py"
+
 DRY=0
-[[ "${1:-}" == "--dry-run" ]] && DRY=1 && shift
+ENFORCE_ROOM="${SUBARU_ENFORCE_ALLOWED_ROOM:-0}"
+A_SENDER="${SUBARU_AUDIT_SENDER:-${TALK_ACTOR_ID:-}}"
+A_ROOM="${SUBARU_AUDIT_ROOM:-${TALK_ROOM:-}}"
+A_SOURCE="${SUBARU_AUDIT_SOURCE:-}"
+A_MSGID="${SUBARU_AUDIT_MESSAGE_ID:-${TALK_MESSAGE_ID:-}}"
+A_VERIFIED="${TALK_VERIFIED:-}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY=1; shift ;;
+    --allowed-room) ENFORCE_ROOM=1; shift ;;
+    --sender) A_SENDER="${2:-}"; shift 2 ;;
+    --room) A_ROOM="${2:-}"; shift 2 ;;
+    --source) A_SOURCE="${2:-}"; shift 2 ;;
+    --message-id) A_MSGID="${2:-}"; shift 2 ;;
+    --verified) A_VERIFIED="${2:-}"; shift 2 ;;
+    --) shift; break ;;
+    -*) echo "unknown option: $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+if [[ -z "$A_SOURCE" ]]; then
+  if [[ "${SUBARU_TALK_FASTPATH:-0}" == "1" ]]; then A_SOURCE=talk; else A_SOURCE=cli; fi
+fi
+# Hand the context to the Python core (it stamps every audit row from env).
+export SUBARU_AUDIT_SENDER="$A_SENDER" SUBARU_AUDIT_ROOM="$A_ROOM" \
+  SUBARU_AUDIT_SOURCE="$A_SOURCE" SUBARU_AUDIT_MESSAGE_ID="$A_MSGID"
 
 MSG="${1:-}"
 if [[ -z "$MSG" ]]; then
-  echo "usage: $0 [--dry-run] \"@openclaw subaru ...\"" >&2
+  echo "usage: $0 [--dry-run] [--sender ID] [--room TOKEN] [--source SRC] [--allowed-room] \"${MENTION} subaru ...\"" >&2
   exit 2
 fi
+
+# _audit_refusal <action> <error_code> [preset]
+_audit_refusal() {
+  local extra=()
+  [[ -n "${3:-}" ]] && extra=( --preset "$3" )
+  [[ "$DRY" -eq 1 ]] && extra+=( --dry-run )
+  python3 "$AUDIT_PY" log --command "$1" --result refused --error-code "$2" "${extra[@]}" \
+    >/dev/null 2>&1 || echo "[subaru] audit write failed" >&2
+}
+
+# _refuse <action> <error_code> <human message>
+_refuse() {
+  _audit_refusal "$1" "$2" "${PRESET_FOR_AUDIT:-}"
+  python3 - "$1" "$2" "$3" <<'PY'
+import json, sys
+action, code, msg = sys.argv[1:4]
+print(json.dumps({"ok": False, "error_code": code, "errors": [msg], "nickname": "Subaru", "command": action}))
+PY
+  exit 0
+}
 
 if ! parsed="$(bash "${SCRIPT_DIR}/subaru-dispatch.sh" "$MSG" 2>/dev/null)"; then
   exit 1
@@ -40,34 +105,35 @@ case " $ACTUATION_CMDS " in
   *" $action "*) is_actuation=1 ;;
   *) is_actuation=0 ;;
 esac
+PRESET_FOR_AUDIT="$(python3 -c "import json,sys; a=json.loads(sys.argv[1]); print(a[a.index('--preset')+1] if '--preset' in a else '')" "$args_json")"
 if [[ "$is_actuation" -eq 1 ]]; then
   if [[ "${SUBARU_ACTUATION_ENABLED:-0}" != "1" && "${SUBARU_FASTPATH_ACTUATION:-0}" != "1" ]]; then
-    python3 - "$action" <<'PY'
-import json, sys
-action = sys.argv[1]
-print(json.dumps({
-    "ok": False,
-    "error_code": "actuation_disabled",
-    "errors": [f"Remote {action} is disabled. Set SUBARU_ACTUATION_ENABLED=1 after operator approval."],
-    "nickname": "Subaru",
-}))
-PY
-    exit 0
+    _refuse "$action" actuation_disabled "Remote ${action} is disabled. Set SUBARU_ACTUATION_ENABLED=1 after operator approval."
+  fi
+  # Room allowlist (Family Hub only). Fail closed; never echo the token.
+  if [[ "$ENFORCE_ROOM" == "1" ]]; then
+    room_var="${SUBARU_ALLOWED_ROOM_VAR:-SKYLIGHT_FAMILY_TALK_ROOM}"
+    if [[ ! "$room_var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      _refuse "$action" allowed_room_unconfigured "Car controls are locked: the allowed room is not configured."
+    fi
+    allowed_token="${!room_var:-}"
+    if [[ -z "$allowed_token" ]]; then
+      _refuse "$action" allowed_room_unconfigured "Car controls are locked: the allowed room is not configured."
+    fi
+    if [[ -z "$A_ROOM" || "$A_ROOM" != "$allowed_token" ]]; then
+      _refuse "$action" room_not_allowed "Car controls only work from the Family Hub room."
+    fi
+    if [[ "$A_SOURCE" == "talk" && "$A_VERIFIED" != "valid" ]]; then
+      _refuse "$action" talk_unverified "Car controls need a verified Talk message."
+    fi
+    if [[ "$A_SOURCE" == "talk" && -z "$A_SENDER" ]]; then
+      _refuse "$action" sender_missing "Car controls need to know who asked."
+    fi
   fi
   # Talk fast-path: require explicit confirm unless SUBARU_FASTPATH_ACTUATION bypasses it.
   if [[ "${SUBARU_TALK_FASTPATH:-0}" == "1" && "${SUBARU_REQUIRE_TALK_CONFIRM:-0}" == "1" && "${SUBARU_FASTPATH_ACTUATION:-0}" != "1" ]]; then
     if ! printf '%s' "$MSG" | grep -qiE '(^|[[:space:]])confirm($|[[:space:]])'; then
-      python3 - "$action" <<'PY'
-import json, sys
-action = sys.argv[1]
-print(json.dumps({
-    "ok": False,
-    "error_code": "actuation_confirm_required",
-    "errors": [f"Remote {action} from Talk requires 'confirm' (e.g. @openclaw subaru {action} confirm)."],
-    "nickname": "Subaru",
-}))
-PY
-      exit 0
+      _refuse "$action" actuation_confirm_required "Remote ${action} from Talk requires 'confirm' (e.g. ${MENTION} subaru ${action} confirm)."
     fi
   fi
 fi
@@ -91,7 +157,9 @@ PY
 )
 
 if [[ "$DRY" -eq 1 ]]; then
-  echo "SUBARU_DISPATCH_DRY action=${action} cmd=subaru-vehicle.sh ${cli_args[*]}"
+  printf 'SUBARU_DISPATCH_DRY action=%s cmd=subaru-vehicle.sh' "$action"
+  printf ' %q' "${cli_args[@]}"
+  printf '\n'
   exit 0
 fi
 
@@ -153,6 +221,12 @@ if [[ "${SUBARU_TALK_FASTPATH:-0}" == "1" && "$is_read_refresh" -eq 1 && -n "$re
 fi
 
 if [[ -z "$result" ]]; then
+  # The core audits API failures itself; this covers a CLI that died before
+  # writing anything (crash, missing venv) so no actuation attempt goes unlogged.
+  if [[ "$is_actuation" -eq 1 ]]; then
+    python3 "$AUDIT_PY" log --command "$action" --result failed --error-code cli_no_output \
+      ${PRESET_FOR_AUDIT:+--preset "$PRESET_FOR_AUDIT"} >/dev/null 2>&1 || true
+  fi
   exit 1
 fi
 printf '%s\n' "$result"

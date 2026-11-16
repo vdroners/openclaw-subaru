@@ -19,6 +19,12 @@ source "${SCRIPT_DIR}/load-subaru-env.sh"
 # Tell dispatch-exec it is serving a Talk reply: enables the richer summary
 # deck and staleness-gated refresh before reporting telemetry to the operator.
 export SUBARU_TALK_FASTPATH=1
+# Audit context: the room token is known here even when the shim does not export
+# TALK_ROOM. Actor / message id / verified state come from the shim's env
+# (TALK_ACTOR_ID, TALK_MESSAGE_ID, TALK_VERIFIED) when it provides them.
+export TALK_ROOM="${TALK_ROOM:-$ROOM}"
+export SUBARU_AUDIT_SOURCE="${SUBARU_AUDIT_SOURCE:-talk}"
+MENTION="${OPENCLAW_AGENT_MENTION:-@alfred}"
 
 dispatch="${SCRIPT_DIR}/subaru-dispatch-exec.sh"
 formatter="${SCRIPT_DIR}/subaru-format-talk-reply.sh"
@@ -50,14 +56,14 @@ PY
 
 result="$(bash "$dispatch" "$clean_msg" 2>/dev/null)" || result=""
 if [[ -z "$result" ]]; then
-  summary="Subaru: could not parse that command. Try: @openclaw subaru status"
+  summary="Subaru: could not parse that command. Try: ${MENTION} subaru status"
 elif ! printf '%s' "$result" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
   summary="Subaru: command failed."
 else
   summary="$(printf '%s' "$result" | bash "$formatter" 2>/dev/null || true)"
 fi
 if [[ -z "$summary" ]]; then
-  summary="Subaru: command failed. Try: @openclaw subaru status"
+  summary="Subaru: command failed. Try: ${MENTION} subaru status"
 fi
 summary="$(printf '%s' "$summary" | grep -v '^SUBARU_' | head -c 500 | sed '/./,$!d')"
 bash "$talk_post" "$summary" "$ROOM"

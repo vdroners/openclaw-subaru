@@ -135,6 +135,9 @@ def format_talk_reply(payload: dict[str, Any]) -> str:
             "device_not_authenticated": "Run: bash ~/.openclaw/scripts/subaru-device-register.sh --request",
             "pin_missing": "Add your 4-digit PIN to ~/.openclaw/.env.d/subaru-pin",
             "actuation_disabled": "Actuation is off (read-only commands still work).",
+            "room_not_allowed": "Ask from the Family Hub room.",
+            "allowed_room_unconfigured": "Ask Alfred to set the Family Hub room for car controls.",
+            "talk_unverified": "The message could not be verified; try again.",
         }
         hint = hints.get(code, "")
         lines = [f"Subaru ({payload.get('nickname') or 'vehicle'}): {code}"]

@@ -91,11 +91,13 @@ def test_status_alert_dry_run_exits_zero():
     assert "SUBARU_ALERT_OK dry-run" in proc.stdout
 
 
-def test_dispatch_exec_requires_talk_confirm():
+def test_dispatch_exec_requires_talk_confirm(tmp_path):
     env = {
         "HOME": os.environ["HOME"],
         "PATH": os.environ["PATH"],
         "USER": os.environ.get("USER", ""),
+        # Keep the refusal audit row (and .env lookups) out of the live ~/.openclaw.
+        "OPENCLAW_DIR": str(tmp_path),
         "OPENCLAW_AGENT_MENTION": "@openclaw",
         "SUBARU_TALK_FASTPATH": "1",
         "SUBARU_REQUIRE_TALK_CONFIRM": "1",

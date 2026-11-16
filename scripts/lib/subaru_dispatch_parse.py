@@ -42,6 +42,20 @@ KNOWN = frozenset(
     }
 )
 
+# Subaru cloud climate presets that every account has. Account-specific presets
+# (e.g. a custom "Dan Da Dan") come from the vehicle JSON ``remote_start_preset``,
+# an optional vehicle JSON ``preset_names`` list, or SUBARU_PRESET_NAMES (comma list).
+BUILTIN_PRESETS = ("Auto", "Full Cool", "Full Heat")
+
+_QUOTE_CHARS = "\"'\u201c\u201d\u2018\u2019`"
+# Filler words between "start" and the preset name: "start with Dan Da Dan",
+# "start using preset Full Heat", "start on full heat".
+_PRESET_FILLER_RE = re.compile(
+    r"(?i)^(?:(?:up|it|the|car|engine|vehicle|subaru|wolfram|outback|now|with|using|use|on|in|"
+    r"preset|climate|mode|setting)\b\s*)+"
+)
+_PRESET_TRAILER_RE = re.compile(r"(?i)(?:\s*\b(?:please|now|thanks|thank you|preset)\b)+[.!?]*$")
+
 # Map spoken aliases to CLI commands.
 _ACTION_ALIASES = {
     "fuel": "condition",
@@ -53,10 +67,64 @@ _ACTION_ALIASES = {
 }
 
 
+def known_preset_names(extra: list[str] | None = None) -> list[str]:
+    """Preset names we can canonicalise against (case-insensitive)."""
+    import os
+
+    names: list[str] = list(BUILTIN_PRESETS)
+    raw_env = os.environ.get("SUBARU_PRESET_NAMES", "")
+    names.extend(n.strip() for n in raw_env.split(",") if n.strip())
+    vj = os.environ.get("SUBARU_VEHICLE_JSON", "")
+    if vj:
+        try:
+            cfg = json.loads(Path(vj).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            cfg = {}
+        if isinstance(cfg, dict):
+            default = str(cfg.get("remote_start_preset") or "").strip()
+            if default:
+                names.append(default)
+            extra_cfg = cfg.get("preset_names")
+            if isinstance(extra_cfg, list):
+                names.extend(str(n).strip() for n in extra_cfg if str(n).strip())
+    names.extend(extra or [])
+    seen: set[str] = set()
+    out: list[str] = []
+    for n in names:
+        if n.lower() not in seen:
+            seen.add(n.lower())
+            out.append(n)
+    return out
+
+
+def parse_preset(tokens: list[str], known: list[str] | None = None) -> str:
+    """Join every remaining token into one preset name.
+
+    ``["Dan", "Da", "Dan"]`` -> ``"Dan Da Dan"``; quotes (straight or curly) are
+    stripped; filler like "with"/"preset" is dropped; a case-insensitive match
+    against known presets returns the canonical spelling. Unknown names are
+    passed through unchanged so the CLI can report ``preset_missing``.
+    """
+    raw = " ".join(tokens).strip()
+    raw = raw.strip(_QUOTE_CHARS).strip()
+    raw = _PRESET_FILLER_RE.sub("", raw).strip()
+    raw = _PRESET_TRAILER_RE.sub("", raw).strip()
+    raw = raw.strip(_QUOTE_CHARS + ".!?,").strip()
+    raw = re.sub(r"\s+", " ", raw)
+    if not raw:
+        return ""
+    names = known if known is not None else known_preset_names()
+    for name in names:
+        if name.lower() == raw.lower():
+            return name
+    return raw
+
+
 def parse_dispatch(
     message: str,
     agent_name: str = "openclaw",
     vehicle_aliases: dict[str, str] | None = None,
+    known_presets: list[str] | None = None,
 ) -> dict | None:
     if not is_subaru_command(message, agent_name):
         return None
@@ -84,6 +152,7 @@ def parse_dispatch(
     if not parts:
         return {"action": "status", "args": (["--vin", selected_vin] if selected_vin else [])}
     sub = parts[0].lower()
+    preset_tokens = parts[1:] if sub in ("start", "remote_start") else []
     arg2 = parts[1] if len(parts) > 1 else ""
     arg3 = parts[2] if len(parts) > 2 else ""
     # NL: "is … locked/unlocked", "where is the car" (locate), "door status"
@@ -110,6 +179,7 @@ def parse_dispatch(
                 return None
             sub = found
             arg2 = arg3 = ""
+            preset_tokens = []
     if sub == "maps":
         action = "maps-link"
     elif sub in ("health", "health-report"):
@@ -121,8 +191,10 @@ def parse_dispatch(
     else:
         return None
     args: list[str] = []
-    if action == "start" and arg2:
-        args = ["--preset", arg2]
+    if action == "start" and preset_tokens:
+        preset = parse_preset(preset_tokens, known_presets)
+        if preset:
+            args = ["--preset", preset]
     elif action == "unlock" and arg2 in ("driver", "drivers", "tailgate", "all"):
         args = ["--door", arg2]
     elif action == "unlock" and arg2 and arg3:

@@ -8,11 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Talk household control (Phase 0): multi-word and quoted remote-start presets
+  (`start Dan Da Dan`, `start "Full Heat"`, filler like "with"/"the car" dropped,
+  case-insensitive match against built-in, vehicle-JSON and `SUBARU_PRESET_NAMES`
+  presets).
+- Actuation audit context: `subaru-dispatch-exec.sh --sender/--room/--source/--message-id`
+  (env fallbacks `SUBARU_AUDIT_*`, `TALK_ACTOR_ID`, `TALK_ROOM`, `TALK_MESSAGE_ID`).
+  Every actuation attempt — ok, failed (incl. `preset_missing`) and refused — is
+  written to `subaru-command-log.jsonl` with `sender`, `room`, `source`, `result`,
+  `rejected_reason` (new `scripts/lib/subaru_audit.py`).
+- Optional Family Hub room gate: `--allowed-room` or `SUBARU_ENFORCE_ALLOWED_ROOM=1`
+  refuses actuation unless the room equals the token in the env var named by
+  `SUBARU_ALLOWED_ROOM_VAR` (default `SKYLIGHT_FAMILY_TALK_ROOM`). Fails closed on a
+  missing token, missing room, or unverified Talk webhook. The token is never printed.
 - Shared Talk hooks dispatch helper (`scripts/lib/talk_hooks_dispatch.py`) used by
   the webhook shim to wake OpenClaw via `/hooks/agent` (family vs main by room).
 - Integration tests for Talk shim fast-path + hooks dispatch room routing.
 
 ### Changed
+
+- Talk replies say `${OPENCLAW_AGENT_MENTION}` (e.g. `@alfred`) instead of `@openclaw`.
+- `test_dispatch_exec_requires_talk_confirm` runs with a temp `OPENCLAW_DIR` so tests
+  never read the live `.env` or write the live audit log.
 
 - Family Hub room token is env-only (`SKYLIGHT_FAMILY_TALK_ROOM`); no hardcoded
   default room id in the shim or hooks dispatch.

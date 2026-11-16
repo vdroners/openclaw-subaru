@@ -270,6 +270,24 @@ class SubaruRunner:
             "ok": ok,
             "error_code": error_code,
         }
+        # Who/where/how (Talk actor, room token, source). Read from env so the
+        # dispatch wrapper and the Talk shim can pass it without new CLI flags.
+        try:
+            from subaru_audit import audit_context  # noqa: PLC0415
+
+            row.update(audit_context())
+        except ImportError:  # pragma: no cover - lib dir always on sys.path
+            pass
+        if not ok:
+            refused = error_code in (
+                "actuation_disabled",
+                "actuation_not_cleared",
+                "rate_limited",
+            )
+            row["result"] = "refused" if refused else "failed"
+            row["rejected_reason"] = error_code if refused else None
+        else:
+            row["result"] = "ok"
         with self.settings.audit_log.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
 
@@ -464,6 +482,10 @@ class SubaruRunner:
                 "unsupported",
             )
             code = msg if msg in known else "subaru_api"
+            # Failed actuation attempts (preset_missing, pin_missing, API errors)
+            # used to vanish from the audit log; record them too.
+            if command in self.ACTUATION_COMMANDS:
+                self._audit(command, False, code, tier)
             detail = msg if code != msg or code == "subaru_api" else code
             if code == "device_not_authenticated" and detail == code:
                 detail = "Device not registered — run subaru-device-register.sh once"
