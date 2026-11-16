@@ -36,6 +36,7 @@ fi
 
 MENTION="${OPENCLAW_AGENT_MENTION:-@openclaw}"
 AUDIT_PY="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/subaru_audit.py"
+JSON_FROM_TEXT_PY="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/subaru_json_from_text.py"
 
 DRY=0
 ENFORCE_ROOM="${SUBARU_ENFORCE_ALLOWED_ROOM:-0}"
@@ -189,8 +190,45 @@ if [[ -n "${SUBARU_BRIDGE_URL:-}" ]]; then
   bridge=( --bridge )
 fi
 
+# _run_cli: print the CLI's JSON envelope on stdout, success OR failure.
+# subaru-vehicle.sh moves the payload to stderr when the command fails, so a
+# failed lock used to look like "no output" (cli_no_output) and the real Subaru
+# error was thrown away. Recover the JSON from stderr, and forward a short,
+# non-JSON stderr tail to our stderr for the shim/router logs.
 _run_cli() {
-  bash "${SCRIPT_DIR}/subaru-vehicle.sh" "${bridge[@]}" "${cli_args[@]}" 2>/dev/null
+  local errf out rc=0
+  errf="$(mktemp)"
+  out="$(bash "${SCRIPT_DIR}/subaru-vehicle.sh" "${bridge[@]}" "${cli_args[@]}" "$@" 2>"$errf")" || rc=$?
+  if [[ -z "$out" ]]; then
+    out="$(python3 "$JSON_FROM_TEXT_PY" <"$errf" 2>/dev/null || true)"
+  fi
+  if [[ "$rc" -ne 0 ]]; then
+    local tail_txt
+    tail_txt="$(grep -vE '^[[:space:]]*$|^SUBARU_(OK|ERR)' "$errf" | grep -vE '^[[:space:]]*[{}"\[\]]' | tail -n 3 | cut -c1-200 || true)"
+    echo "[subaru] cli rc=${rc}${tail_txt:+ stderr: ${tail_txt//$'\n'/ | }}" >&2
+  fi
+  rm -f "$errf"
+  [[ -n "$out" ]] && printf '%s\n' "$out"
+  return "$rc"
+}
+
+# _json_set_refresh <state>: stamp data.meta.refresh so the Talk formatter can
+# say whether a fresh reading was attempted (failed/throttled) or not.
+_json_set_refresh() {
+  python3 -c '
+import json, sys
+state = sys.argv[1]
+try:
+    payload = json.load(sys.stdin)
+except (json.JSONDecodeError, ValueError):
+    sys.exit(1)
+data = payload.setdefault("data", {})
+if isinstance(data, dict):
+    meta = data.setdefault("meta", {})
+    if isinstance(meta, dict):
+        meta["refresh"] = state
+print(json.dumps(payload))
+' "$1"
 }
 
 _staleness_seconds() {
@@ -218,7 +256,8 @@ case " $READ_REFRESH_CMDS " in
   *) is_read_refresh=0 ;;
 esac
 
-result="$(_run_cli)" || result=""
+cli_rc=0
+result="$(_run_cli)" || cli_rc=$?
 
 if [[ "${SUBARU_TALK_FASTPATH:-0}" == "1" && "$is_read_refresh" -eq 1 && -n "$result" ]]; then
   max_age="${SUBARU_TALK_REFRESH_MAX_AGE_S:-300}"
@@ -231,12 +270,17 @@ if [[ "${SUBARU_TALK_FASTPATH:-0}" == "1" && "$is_read_refresh" -eq 1 && -n "$re
     # next message immediately re-hammer the MySubaru endpoint. Explicit operator
     # "subaru update" requests are NOT scoped here, so they still force a refresh.
     refresh_window="${SUBARU_UPDATE_MIN_INTERVAL_S:-$max_age}"
-    if SUBARU_UPDATE_MIN_INTERVAL_S="$refresh_window" \
-        bash "${SCRIPT_DIR}/subaru-vehicle.sh" "${bridge[@]}" update >/dev/null 2>&1; then
-      fresh="$(_run_cli)" || fresh=""
+    upd="$(SUBARU_UPDATE_MIN_INTERVAL_S="$refresh_window" \
+        bash "${SCRIPT_DIR}/subaru-vehicle.sh" "${bridge[@]}" update 2>/dev/null)" && upd_rc=0 || upd_rc=$?
+    if [[ "$upd_rc" -eq 0 ]] && printf '%s' "$upd" | grep -q '"throttled": true'; then
+      echo "[fast-path] update throttled; serving cached data" >&2
+      result="$(printf '%s' "$result" | _json_set_refresh throttled)" || true
+    elif [[ "$upd_rc" -eq 0 ]]; then
+      fresh="$(_run_cli)" || true
       [[ -n "$fresh" ]] && result="$fresh"
     else
-      echo "[fast-path] update failed; serving cached data" >&2
+      echo "[fast-path] update failed (rc=${upd_rc}); serving cached data" >&2
+      result="$(printf '%s' "$result" | _json_set_refresh failed)" || true
     fi
   fi
 fi
@@ -244,6 +288,7 @@ fi
 if [[ -z "$result" ]]; then
   # The core audits API failures itself; this covers a CLI that died before
   # writing anything (crash, missing venv) so no actuation attempt goes unlogged.
+  echo "[subaru] ${action}: no JSON from subaru-vehicle.sh (rc=${cli_rc})" >&2
   if [[ "$is_actuation" -eq 1 ]]; then
     python3 "$AUDIT_PY" log --command "$action" --result failed --error-code cli_no_output \
       ${PRESET_FOR_AUDIT:+--preset "$PRESET_FOR_AUDIT"} >/dev/null 2>&1 || true

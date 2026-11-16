@@ -81,8 +81,8 @@ def test_format_status_rich_fields(monkeypatch):
 def test_format_status_stale_warning(monkeypatch):
     monkeypatch.delenv("SUBARU_TALK_REFRESH_MAX_AGE_S", raising=False)
     text = format_talk_reply(_summary_payload(7200))
-    assert "cached" in text.lower()
-    assert "could not refresh" in text
+    assert "last report from the car ~2h ago" in text
+    assert "refresh the car" in text
     # Still reports the data so the operator sees the numbers, flagged as old.
     assert "Odometer: 58064 mi" in text
 

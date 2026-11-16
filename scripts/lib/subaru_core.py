@@ -498,11 +498,17 @@ class SubaruRunner:
             )
         except Exception as exc:
             code = exception_to_error_code(exc)
+            # subarulink raises RemoteServiceFailure / InvalidPIN / SubaruException
+            # for a failed remote command; record those actuation attempts too
+            # (they used to leave only a wrapper-level cli_no_output row).
+            if command in self.ACTUATION_COMMANDS:
+                self._audit(command, False, code, tier)
+            detail = f"{exc.__class__.__name__}: {exc}" if str(exc) else exc.__class__.__name__
             return make_response(
                 ok=False,
                 command=command,
                 settings=self.settings,
-                errors=[str(exc)],
+                errors=[detail[:300]],
                 error_code=code,
             )
         finally:

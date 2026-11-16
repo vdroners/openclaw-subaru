@@ -62,7 +62,13 @@ def _format_status(payload: dict[str, Any]) -> str:
     if is_stale:
         mins = int(stale // 60)
         age = f"{mins}m" if mins < 120 else f"{int(stale // 3600)}h"
-        lines.append(f"(cached ~{age} old - could not refresh)")
+        refresh = str(meta.get("refresh") or "")
+        if refresh == "failed":
+            lines.append(f"(last report from the car ~{age} ago - a fresh reading failed)")
+        elif refresh == "throttled":
+            lines.append(f"(last report from the car ~{age} ago - it was asked recently, try again in a few minutes)")
+        else:
+            lines.append(f"(last report from the car ~{age} ago - say \"refresh the car\" for a fresh reading)")
 
     odo = vs.get("ODOMETER")
     if odo is not None:

@@ -10,7 +10,7 @@ MENTION_CHIP_RE = re.compile(r"\{mention-user\d+\}", re.IGNORECASE)
 ROOM_TOKEN_RE = re.compile(r"/(?:call|chat)/([a-z0-9]+)(?:/|$)", re.IGNORECASE)
 _SUBARU_VERB_RE = re.compile(
     r"(?i)\b(status|summary|locate|location|where|parked|maps|maps-link|condition|"
-    r"capabilities|fetch|presets|lock(?:ed)?|unlock(?:ed)?|stop|horn|lights|charge|"
+    r"capabilities|fetch|update|refresh|presets|lock(?:ed)?|unlock(?:ed)?|stop|horn|lights|charge|"
     r"start|health-report|health|fuel|gas|range|doors?|tires?|tpms)\b"
 )
 

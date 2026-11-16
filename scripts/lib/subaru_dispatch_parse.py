@@ -22,6 +22,8 @@ KNOWN = frozenset(
         "condition",
         "capabilities",
         "fetch",
+        "update",
+        "refresh",
         "presets",
         "lock",
         "unlock",
@@ -58,6 +60,9 @@ _PRESET_TRAILER_RE = re.compile(r"(?i)(?:\s*\b(?:please|now|thanks|thank you|pre
 
 # Map spoken aliases to CLI commands.
 _ACTION_ALIASES = {
+    # Explicit "get a fresh reading from the car" (wakes the car; core throttles
+    # it with SUBARU_UPDATE_MIN_INTERVAL_S).
+    "refresh": "update",
     "fuel": "condition",
     "doors": "condition",
     "door": "condition",
